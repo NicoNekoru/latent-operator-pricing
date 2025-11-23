@@ -1,0 +1,157 @@
+\documentclass{article}
+
+% if you need to pass options to natbib, use, e.g.:
+%     \PassOptionsToPackage{numbers, compress}{natbib}
+% before loading neurips_2025
+
+% The authors should use one of these tracks.
+% Before accepting by the NeurIPS conference, select one of the options below.
+% 0. "default" for submission
+% \usepackage{neurips_2025}
+% the "default" option is equal to the "main" option, which is used for the Main Track with double-blind reviewing.
+% 1. "main" option is used for the Main Track
+ % \usepackage[main]{neurips_2025}
+% 2. "position" option is used for the Position Paper Track
+%  \usepackage[position]{neurips_2025}
+% 3. "dandb" option is used for the Datasets & Benchmarks Track
+ % \usepackage[dandb]{neurips_2025}
+% 4. "creativeai" option is used for the Creative AI Track
+%  \usepackage[creativeai]{neurips_2025}
+% 5. "sglblindworkshop" option is used for the Workshop with single-blind reviewing
+ % \usepackage[sglblindworkshop]{neurips_2025}
+% 6. "dblblindworkshop" option is used for the Workshop with double-blind reviewing
+%  \usepackage[dblblindworkshop]{neurips_2025}
+
+% After being accepted, the authors should add "final" behind the track to compile a camera-ready version.
+% 1. Main Track
+ % \usepackage[main, final]{neurips_2025}
+% 2. Position Paper Track
+%  \usepackage[position, final]{neurips_2025}
+% 3. Datasets & Benchmarks Track
+ % \usepackage[dandb, final]{neurips_2025}
+% 4. Creative AI Track
+%  \usepackage[creativeai, final]{neurips_2025}
+% 5. Workshop with single-blind reviewing
+%  \usepackage[sglblindworkshop, final]{neurips_2025}
+% 6. Workshop with double-blind reviewing
+%  \usepackage[dblblindworkshop, final]{neurips_2025}
+% Note. For the workshop paper template, both \title{} and \workshoptitle{} are required, with the former indicating the paper title shown in the title and the latter indicating the workshop title displayed in the footnote.
+% For workshops (5., 6.), the authors should add the name of the workshop, "\workshoptitle" command is used to set the workshop title.
+% \workshoptitle{WORKSHOP TITLE}
+
+% "preprint" option is used for arXiv or other preprint submissions
+ \usepackage[preprint]{neurips_2025}
+
+% to avoid loading the natbib package, add option nonatbib:
+%    \usepackage[nonatbib]{neurips_2025}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsmath}        % amsmath
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{xcolor}         % colors
+
+% Note. For the workshop paper template, both \title{} and \workshoptitle{} are required, with the former indicating the paper title shown in the title and the latter indicating the workshop title displayed in the footnote. 
+\title{Project Proposal For AMATH 383 AU25}
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to LaTeX to determine where to break the
+% lines. Using \AND forces a line break at that point. So, if LaTeX puts 3 of 4
+% authors names on the first line, and the last on the second line, try using
+% \AND instead of \And before the third author name.
+
+
+\author{%
+  Kai Hidajat \\
+  % \thanks{Use footnote for providing further information
+  %   about author (webpage, alternative address)---\emph{not} for acknowledging
+  %   funding agencies.} \\
+  Department of Applied Math \\
+  University of Washington \\
+  Seattle, WA, 98109\\
+  \texttt{hidajatk@uw.edu} \\
+  % examples of more authors
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \AND
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+}
+
+\begin{document}
+
+
+\maketitle
+
+
+\begin{abstract}
+    We propose exploring a stochastic partial differential equation (SPDE) extension of the continuous-time Black-Scholes pricing model for American style call options. Using neural operator methods, we will develop a continuous time higher-parameter model for valuing call options beyond American-style. In this proposal, we will ground the exploration with the necessary context for SDEs and their SPDE extensions, as well as contrasting existing finite difference methods with neural operators.
+\end{abstract}
+
+\clearpage
+
+\section{Introduction} % Grounding and Motivations
+Partial differential equations (PDEs) capture relations among multiple continuous variables (e.g., time and state). In finance, the Black-Scholes SDE
+\[
+    dS_t = rS_t \,dt + \sigma S_t \,dW_t
+\]
+leads--via the risk‐neutral expectation--to the deterministic PDE \citep{nayak2025mathematicalmodelingoptionpricing}
+\[
+    \partial_t V + \frac12\sigma^2 s^2 \partial_{ss}V + r s\partial_sV - rV = 0,\quad V(T,s)=g(s).
+\]
+This PDE formulation enables efficient computation of prices and sensitivities.  
+
+\subsection{From SDEs to SPDEs}
+To accommodate richer dynamics--such as spatially distributed noise, stochastic volatilities, or regime fluctuations--we move from SDEs/PDEs to stochastic‐partial‐differential‐equations (SPDEs) of the form
+\[
+    dU(t,x)=\mathcal LU dt + \mathcal G(U) dW_t(x),
+\]
+where \(\mathcal L\) is a spatial/temporal differential operator and \(W_t(x)\) is a noise process indexed by space and time. SPDEs embed randomness directly into fields rather than trajectories, enabling modeling of spatio‐temporal uncertainty and parameter fluctuations. However, classical discretisation of SPDEs is challenging: time-space grids must resolve noise, leading to high cost and potential instability.
+
+\subsection{Current Solving Methods}
+Finding the analytical solutions to PDEs is often infeasible or immensely complex. Thus, we rely on classical numerical solvers -- finite‐difference methods particularly -- which approximate the continuous system via discrete time and space grids. Immediately, they are limited by grid‐dependency and discretisation artifacts (numerical diffusion, dispersion, stability), and typically solve for single‐instance solutions rather than families/parameterised solutions. These issues become more acute when extending to stochastic or high‐dimensional problems.
+
+\subsection{Neural Operator Methods}
+Neural‐based solvers offer an alternative: mesh‐free, continuous‐domain methods that learn the operators which map inputs (coefficients, forcing, boundaries) to solutions \citep{shen2025neuralsdesunifiedapproach}.
+
+For deterministic PDEs, we can train a neural network \(u_\theta(t,x)\) to minimise the PDE residual via automatic differentiation. For SPDEs, neural architectures can incorporate random inputs (noise realisations or latent variables) or learn the operator \citep{salvi2022neuralstochasticpdesresolutioninvariant}
+\[
+    \mathcal G_\theta: (\text{initial/boundary data}, \text{noise}) \mapsto U(t,x).
+\]
+These methods offer parameterised families of solutions and avoid some discretisation burdens of finite‐difference schemes.
+
+\section{Research Question}
+By combining SPDE modelling with neural operator solvers, we seek to build a continuous‐time, high‐flexibility pricing framework for options that incorporates stochastic parameter fields, non‐stationary volatility regimes, and multiple asset factors.
+
+\section{Datasets}
+To develop the model, we will be using historical options pricing for the SPX and QQQ indices from 2012-2022, and we will test the models performance on pricing from 2023-2025. Data will be taken from the Yahoo Finance API using the \texttt{yfinance} library \citep{aroussi_nodate_yfinance}.
+
+% \section{Methodology}
+
+% \section{Goals and Expected Outcomes}
+
+\bibliographystyle{plainnat}
+\bibliography{FP/references}
+\end{document}

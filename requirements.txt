@@ -1,0 +1,8 @@
+numpy
+pandas
+yfinance
+QuantLib
+pyarrow
+scipy
+matplotlib
+torch

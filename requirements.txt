@@ -6,3 +6,5 @@ pyarrow
 scipy
 matplotlib
 torch
+plotly
+kaleido

@@ -1,8 +1,9 @@
-numpy
 pandas
 yfinance
 QuantLib
 pyarrow
 scipy
+scipy
 matplotlib
+seaborn
 torch

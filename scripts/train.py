@@ -1,45 +1,16 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
-import pandas as pd
-import numpy as np
+from torch.utils.data import DataLoader
 import sys
 import os
+
+# Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from src.models import NeuralOperator
-
-class OptionDataset(Dataset):
-    def __init__(self, parquet_path, mode='train'):
-        self.df = pd.read_parquet(parquet_path)
-
-        self.df['Date'] = pd.to_datetime(self.df['Date'])
-
-        # Split based on date
-        # Train: <= 2022
-        # Val: >= 2023 (Includes 2024-2025)
-
-        if mode == 'train':
-            self.df = self.df[self.df['Date'].dt.year <= 2022]
-        elif mode == 'val':
-            self.df = self.df[self.df['Date'].dt.year >= 2023]
-
-    def __len__(self):
-        return len(self.df)
-
-    def __getitem__(self, idx):
-        row = self.df.iloc[idx]
-
-        # Inputs: (30, 2)
-        returns = np.array(row['Input_Returns'], dtype=np.float32)
-        vols = np.array(row['Input_Vols'], dtype=np.float32)
-
-        x = np.stack([returns, vols], axis=1) # Shape (30, 2)
-
-        # Targets: (21,)
-        y = np.array(row['Target_Prices'], dtype=np.float32)
-
-        return torch.tensor(x), torch.tensor(y)
+from src.dataset import OptionDataset
+from src.utils import calculate_metrics
 
 class PhysicsInformedLoss(nn.Module):
     def __init__(self, arbitrage_weight=0.1):
@@ -48,9 +19,6 @@ class PhysicsInformedLoss(nn.Module):
 
     def forward(self, y_pred, y_true):
         # MSLE Loss (Mean Squared Log Error)
-        # L = || log(y_pred + 1) - log(y_true + 1) ||^2
-        # Adding 1e-6 to avoid log(0) if prices are 0 (though Softplus ensures >0)
-
         log_pred = torch.log(y_pred + 1e-6)
         log_true = torch.log(y_true + 1e-6)
 
@@ -63,21 +31,6 @@ class PhysicsInformedLoss(nn.Module):
 
         total_loss = msle_loss + self.arbitrage_weight * penalty
         return total_loss, msle_loss, penalty
-
-def calculate_metrics(y_pred, y_true):
-    # MAPE: Mean Absolute Percentage Error
-    # Mask out very small values to avoid division by zero
-    mask = y_true > 1e-4
-    if mask.sum() == 0:
-        return 0.0, 0.0
-
-    diff = torch.abs(y_pred[mask] - y_true[mask])
-    mape = torch.mean(diff / y_true[mask]) * 100.0
-
-    # Dollar Error (assuming Index ~ 4000)
-    dollar_err = torch.mean(diff) * 4000.0
-
-    return mape.item(), dollar_err.item()
 
 def train_model(epochs=100, batch_size=32, lr=1e-3, latent_dim=3):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

@@ -1,12 +1,14 @@
 import torch
-import numpy as np
-import pandas as pd
 from torch.utils.data import DataLoader
 import sys
 import os
+
+# Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from src.models import NeuralOperator
-from src.train import OptionDataset, calculate_metrics
+from src.dataset import OptionDataset
+from src.utils import calculate_metrics
 
 def evaluate():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -21,7 +23,11 @@ def evaluate():
 
     # Load Model
     model = NeuralOperator(latent_dim=3).to(device)
-    model.load_state_dict(torch.load('models/neural_operator.pth', map_location=device))
+    try:
+        model.load_state_dict(torch.load('models/neural_operator.pth', map_location=device))
+    except FileNotFoundError:
+        print("Model not found. Please train first.")
+        return
     model.eval()
 
     total_mape = 0.0
@@ -35,8 +41,6 @@ def evaluate():
 
             mape, dollar = calculate_metrics(y_pred, y)
 
-            # calculate_metrics returns mean over batch
-            # We need to weight by batch size to get true mean
             batch_size = x.size(0)
             total_mape += mape * batch_size
             total_dollar += dollar * batch_size

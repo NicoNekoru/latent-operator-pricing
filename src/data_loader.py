@@ -35,16 +35,42 @@ class MarketScraper:
             self.download_data()
 
         processed_dfs = []
-        for ticker in self.tickers:
-            df = self.data[ticker].copy()
-            # Calculate Log Returns
-            df['LogReturn'] = np.log(df['Close'] / df['Close'].shift(1))
-            # Calculate Realized Volatility (21-day rolling std dev of log returns)
-            df['RealizedVol'] = df['LogReturn'].rolling(window=21).std() * np.sqrt(252)
 
-            df = df.dropna()
-            df['Ticker'] = ticker
-            processed_dfs.append(df)
+        # Check if columns are MultiIndex (Ticker, PriceType)
+        is_multi = isinstance(self.data.columns, pd.MultiIndex)
+
+        for ticker in self.tickers:
+            try:
+                if is_multi:
+                    df = self.data[ticker].copy()
+                else:
+                    # If only one ticker, yfinance might not return MultiIndex
+                    if ticker == self.tickers[0] and len(self.tickers) == 1:
+                        df = self.data.copy()
+                    else:
+                        # Fallback or error
+                        print(f"Warning: Structure unclear for {ticker}")
+                        continue
+
+                # Calculate Log Returns
+                # Handle missing data
+                if df.empty:
+                    print(f"Warning: Empty data for {ticker}")
+                    continue
+
+                df['LogReturn'] = np.log(df['Close'] / df['Close'].shift(1))
+                # Calculate Realized Volatility (21-day rolling std dev of log returns)
+                df['RealizedVol'] = df['LogReturn'].rolling(window=21).std() * np.sqrt(252)
+
+                df = df.dropna()
+                df['Ticker'] = ticker
+                processed_dfs.append(df)
+            except KeyError:
+                print(f"Warning: Could not process {ticker}")
+                continue
+
+        if not processed_dfs:
+            raise ValueError("No data processed!")
 
         combined_df = pd.concat(processed_dfs)
         return combined_df
@@ -122,79 +148,68 @@ class HestonSimulator:
 
         return surface_data
 
-def generate_dataset(output_path='data/processed_dataset.parquet'):
-    print("Initializing Scraper...")
-    scraper = MarketScraper()
+def generate_dataset(tickers=['^GSPC', '^NDX', '^RUT', '^DJI'], output_path='data/processed_dataset.parquet'):
+    print(f"Initializing Scraper for {tickers}...")
+    scraper = MarketScraper(tickers=tickers)
     market_data = scraper.process_data()
 
     print("Initializing Heston Simulator...")
     simulator = HestonSimulator()
 
-    # Filter for just one ticker for simplicity initially, or handle both
-    # Let's stick to ^GSPC (S&P 500) for the main dataset
-    spx_data = market_data[market_data['Ticker'] == '^GSPC'].sort_index()
-
     dataset_rows = []
 
-    print(f"Generating surfaces for {len(spx_data)} days...")
-
-    # Parameters for Heston (can be randomized slightly per day to add robustness)
-    # For now, we fix them or make them dependent on realized vol
-
-    for date_idx, row in spx_data.iterrows():
-        spot = row['Close']
-        realized_vol = row['RealizedVol']
-
-        # Heuristic: Map realized vol to Heston parameters
-        # v0 (initial variance) ~ realized_vol^2
-        v0 = realized_vol ** 2
-
-        # Stable parameters to ensure learnability
-        # We want the mapping X -> Y to be deterministic or close to it.
-        kappa = 2.0
-        theta = v0 # Long term vol tracks current vol regime
-        sigma = 0.3
-        rho = -0.7
-
-        surface = simulator.generate_surface(spot, v0, kappa, theta, sigma, rho)
-
-        # Flatten surface into a feature vector
-        # We need a consistent ordering: M1_K1, M1_K2, ... M3_K7
-        flat_prices = []
-        for point in surface:
-            flat_prices.append(point['Price'])
-
-        # Input Features: Past 30 days of returns and vol
-        # We need to look back 30 days.
-        # This requires us to have access to the window.
-        # Efficient way: Pre-compute rolling windows or just grab them here (slower)
-
-        # Check if we have enough history
-        loc_idx = spx_data.index.get_loc(date_idx)
-        if loc_idx < 30:
+    for ticker in tickers:
+        print(f"Processing {ticker}...")
+        if ticker not in market_data['Ticker'].values:
+            print(f"Warning: No data found for {ticker}")
             continue
 
-        past_30_days = spx_data.iloc[loc_idx-30:loc_idx]
+        ticker_data = market_data[market_data['Ticker'] == ticker].sort_index()
+        print(f"Generating surfaces for {len(ticker_data)} days of {ticker}...")
 
-        # Feature vector: Flattened 30x2 array (LogReturn, RealizedVol)
-        # Or keep as array. Parquet supports arrays.
+        for date_idx, row in ticker_data.iterrows():
+            spot = row['Close']
+            realized_vol = row['RealizedVol']
 
-        input_returns = past_30_days['LogReturn'].values
-        input_vols = past_30_days['RealizedVol'].values
+            # Heuristic: Map realized vol to Heston parameters
+            v0 = realized_vol ** 2
 
-        row_dict = {
-            'Date': date_idx,
-            'Spot': spot,
-            'RealizedVol': realized_vol,
-            'Input_Returns': input_returns,
-            'Input_Vols': input_vols,
-            'Target_Prices': np.array(flat_prices),
-            'Heston_Params': {'kappa': kappa, 'theta': theta, 'sigma': sigma, 'rho': rho, 'v0': v0}
-        }
-        dataset_rows.append(row_dict)
+            # Stable parameters
+            kappa = 2.0
+            theta = v0
+            sigma = 0.3
+            rho = -0.7
 
-        if len(dataset_rows) % 100 == 0:
-            print(f"Processed {len(dataset_rows)} days...")
+            surface = simulator.generate_surface(spot, v0, kappa, theta, sigma, rho)
+
+            flat_prices = []
+            for point in surface:
+                flat_prices.append(point['Price'])
+
+            # Check history
+            loc_idx = ticker_data.index.get_loc(date_idx)
+            if loc_idx < 30:
+                continue
+
+            past_30_days = ticker_data.iloc[loc_idx-30:loc_idx]
+
+            input_returns = past_30_days['LogReturn'].values
+            input_vols = past_30_days['RealizedVol'].values
+
+            row_dict = {
+                'Date': date_idx,
+                'Ticker': ticker,
+                'Spot': spot,
+                'RealizedVol': realized_vol,
+                'Input_Returns': input_returns,
+                'Input_Vols': input_vols,
+                'Target_Prices': np.array(flat_prices),
+                'Heston_Params': {'kappa': kappa, 'theta': theta, 'sigma': sigma, 'rho': rho, 'v0': v0}
+            }
+            dataset_rows.append(row_dict)
+
+            if len(dataset_rows) % 500 == 0:
+                print(f"Processed {len(dataset_rows)} samples...")
 
     print("Saving dataset...")
     df_final = pd.DataFrame(dataset_rows)
@@ -203,7 +218,7 @@ def generate_dataset(output_path='data/processed_dataset.parquet'):
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     df_final.to_parquet(output_path)
-    print(f"Dataset saved to {output_path}")
+    print(f"Dataset saved to {output_path} with {len(df_final)} samples.")
 
 if __name__ == "__main__":
     generate_dataset()

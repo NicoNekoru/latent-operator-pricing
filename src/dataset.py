@@ -10,15 +10,19 @@ class OptionDataset(Dataset):
         self.df['Date'] = pd.to_datetime(self.df['Date'])
 
         # Split based on date
-        # Train: <= 2022
-        # Val: >= 2023 (Includes 2024-2025)
+        # Available range: 2023-03 to 2025-11
+        # Train: <= 2024-06
+        # Val: > 2024-06
+
+        cutoff_date = pd.Timestamp('2024-06-01')
 
         if mode == 'train':
-            self.df = self.df[self.df['Date'].dt.year <= 2022]
+            self.df = self.df[self.df['Date'] <= cutoff_date]
         elif mode == 'val':
-            self.df = self.df[self.df['Date'].dt.year >= 2023]
+            self.df = self.df[self.df['Date'] > cutoff_date]
         elif mode == 'test':
-             self.df = self.df[self.df['Date'].dt.year >= 2024]
+             # For now, use Val set as Test or define a later cutoff
+             self.df = self.df[self.df['Date'] > cutoff_date]
 
     def __len__(self):
         return len(self.df)

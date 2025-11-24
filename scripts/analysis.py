@@ -147,14 +147,19 @@ def compare_indices():
     model.eval()
 
     print("Fetching Market Data for Comparison...")
-    scraper = MarketScraper(tickers=['^GSPC', '^NDX'], start_date='2023-01-01')
+    tickers = ['^GSPC', '^NDX', '^RUT', '^DJI']
+    scraper = MarketScraper(tickers=tickers, start_date='2023-01-01')
     market_data = scraper.process_data()
     simulator = HestonSimulator()
 
     results = {}
 
-    for ticker in ['^GSPC', '^NDX']:
+    for ticker in tickers:
         print(f"Processing {ticker}...")
+        if ticker not in market_data['Ticker'].values:
+            print(f"Warning: No data for {ticker}")
+            continue
+
         df = market_data[market_data['Ticker'] == ticker].sort_index()
         dates, true_prices, pred_prices, maes = [], [], [], []
 
@@ -189,25 +194,24 @@ def compare_indices():
         results[ticker] = {'dates': dates, 'true': true_prices, 'pred': pred_prices, 'mae': maes}
 
     print("Generating Comparison Plot...")
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10), sharex=True)
-    colors = {'^GSPC': 'blue', '^NDX': 'orange'}
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12), sharex=True)
+    colors = {'^GSPC': 'blue', '^NDX': 'orange', '^RUT': 'green', '^DJI': 'red'}
 
-    for ticker in ['^GSPC', '^NDX']:
-        c = colors[ticker]
-        ax1.plot(results[ticker]['dates'], results[ticker]['true'], label=f'{ticker} Truth', color=c)
+    for ticker in results:
+        c = colors.get(ticker, 'black')
+        ax1.plot(results[ticker]['dates'], results[ticker]['true'], label=f'{ticker} Truth', color=c, alpha=0.6)
         ax1.plot(results[ticker]['dates'], results[ticker]['pred'], label=f'{ticker} Pred', color=c, linestyle='--')
         ax2.plot(results[ticker]['dates'], results[ticker]['mae'], label=f'{ticker} MAE', color=c)
-        ax2.fill_between(results[ticker]['dates'], results[ticker]['mae'], color=c, alpha=0.3)
 
-    ax1.set_title("Model Generalization: S&P 500 vs Nasdaq 100")
+    ax1.set_title("Model Generalization: Multi-Index Comparison")
     ax1.set_ylabel("Normalized Price")
-    ax1.legend()
+    ax1.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     ax1.grid(True, alpha=0.3)
 
     ax2.set_title("Mean Absolute Error (MAE)")
     ax2.set_ylabel("MAE Loss")
     ax2.set_xlabel("Date")
-    ax2.legend()
+    ax2.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     ax2.grid(True, alpha=0.3)
 
     plt.tight_layout()

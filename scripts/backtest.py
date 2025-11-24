@@ -28,86 +28,87 @@ def run_backtest():
         return
     model.eval()
 
-    # 2. Load Data (2023-Present)
-    print("Fetching Market Data...")
-    scraper = MarketScraper(tickers=['^GSPC'], start_date='2023-01-01')
+    # 2. Load Data (All Tickers)
+    tickers = ['^GSPC', '^NDX', '^RUT', '^DJI']
+    print(f"Fetching Market Data for {tickers}...")
+    scraper = MarketScraper(tickers=tickers, start_date='2023-01-01')
     market_data = scraper.process_data()
-    df = market_data[market_data['Ticker'] == '^GSPC'].sort_index()
 
-    # 3. Generate Latent Trajectory
-    print("Generating Latent Trajectory...")
-    z_history = []
-    dates = []
-    returns = []
+    # Prepare Plot
+    fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+    axes = axes.flatten()
 
-    start_idx = 30
+    for idx, ticker in enumerate(tickers):
+        print(f"Backtesting {ticker}...")
+        ax = axes[idx]
 
-    for i in range(start_idx, len(df)):
-        past_30 = df.iloc[i-30:i]
-        input_returns = past_30['LogReturn'].values
-        input_vols = past_30['RealizedVol'].values
+        if ticker not in market_data['Ticker'].values:
+            print(f"Warning: No data for {ticker}")
+            continue
 
-        x = np.stack([input_returns, input_vols], axis=1).reshape(1, 30, 2)
-        x_tensor = torch.tensor(x, dtype=torch.float32).to(device)
+        df = market_data[market_data['Ticker'] == ticker].sort_index()
+        df = df[df.index >= '2023-01-01']
 
-        with torch.no_grad():
-            _, z = model(x_tensor)
-            z_np = z.cpu().numpy().flatten()
+        # 3. Generate Latent Trajectory
+        z_history = []
+        dates = []
+        returns = []
 
-        z_history.append(z_np)
-        dates.append(df.index[i])
-        returns.append(df.iloc[i]['LogReturn'])
+        start_idx = 30
 
-    z_history = np.array(z_history)
-    returns = np.array(returns)
+        for i in range(start_idx, len(df)):
+            past_30 = df.iloc[i-30:i]
+            input_returns = past_30['LogReturn'].values
+            input_vols = past_30['RealizedVol'].values
 
-    # 4. Run Strategies
-    strategies = [
-        BenchmarkStrategy(),
-        RegimeStrategy(threshold_percentile=80),
-        MomentumStrategy(lookback=5),
-        MeanReversionStrategy(z_score_threshold=2.0)
-    ]
+            x = np.stack([input_returns, input_vols], axis=1).reshape(1, 30, 2)
+            x_tensor = torch.tensor(x, dtype=torch.float32).to(device)
 
-    results = {}
+            with torch.no_grad():
+                _, z = model(x_tensor)
+                z_np = z.cpu().numpy().flatten()
 
-    print("Running Strategies...")
-    for strat in strategies:
-        signals = strat.generate_signals(z_history)
-        strat_returns = signals.shift(1).fillna(0).values * returns
-        cum_ret = np.cumprod(1 + strat_returns) - 1
+            z_history.append(z_np)
+            dates.append(df.index[i])
+            returns.append(df.iloc[i]['LogReturn'])
 
-        total_ret = cum_ret[-1]
-        sharpe = np.mean(strat_returns) / (np.std(strat_returns) + 1e-9) * np.sqrt(252)
+        z_history = np.array(z_history)
+        returns = np.array(returns)
 
-        cum_ret_series = pd.Series(cum_ret)
-        drawdown = cum_ret_series - cum_ret_series.cummax()
-        max_dd = drawdown.min()
+        # 4. Run Strategies
+        strategies = [
+            BenchmarkStrategy(),
+            RegimeStrategy(threshold_percentile=80),
+            MomentumStrategy(lookback=5),
+            MeanReversionStrategy(z_score_threshold=2.0)
+        ]
 
-        results[strat.name] = {
-            'cum_ret': cum_ret,
-            'total_ret': total_ret,
-            'sharpe': sharpe,
-            'max_dd': max_dd
-        }
-        print(f"{strat.name}: Return={total_ret*100:.2f}%, Sharpe={sharpe:.2f}, MaxDD={max_dd*100:.2f}%")
+        results = {}
 
-    # 5. Visualization - Matplotlib
-    print("Generating Strategy Comparison Plot...")
-    plt.figure(figsize=(12, 8))
+        for strat in strategies:
+            signals = strat.generate_signals(z_history)
+            strat_returns = signals.shift(1).fillna(0).values * returns
+            cum_ret = np.cumprod(1 + strat_returns) - 1
 
-    for name, res in results.items():
-        plt.plot(dates, res['cum_ret'], label=f"{name} (SR: {res['sharpe']:.2f})")
+            total_ret = cum_ret[-1]
+            sharpe = np.mean(strat_returns) / (np.std(strat_returns) + 1e-9) * np.sqrt(252)
 
-    plt.title("Strategy Performance Benchmark (2023-Present)")
-    plt.xlabel("Date")
-    plt.ylabel("Cumulative Return")
-    plt.legend()
-    plt.grid(True, alpha=0.3)
+            results[strat.name] = {'cum_ret': cum_ret, 'sharpe': sharpe}
 
+        # 5. Plot on Subplot
+        for name, res in results.items():
+            ax.plot(dates, res['cum_ret'], label=f"{name} (SR: {res['sharpe']:.2f})")
+
+        ax.set_title(f"{ticker} Strategy Performance")
+        ax.set_xlabel("Date")
+        ax.set_ylabel("Cumulative Return")
+        ax.legend(fontsize='small')
+        ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
     os.makedirs('plots', exist_ok=True)
-    plt.savefig("plots/strategy_comparison.png", dpi=300)
-    print("Saved plots/strategy_comparison.png")
+    plt.savefig("plots/multi_index_strategy_comparison.png", dpi=300)
+    print("Saved plots/multi_index_strategy_comparison.png")
 
 if __name__ == "__main__":
     run_backtest()

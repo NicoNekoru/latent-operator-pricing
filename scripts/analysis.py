@@ -25,73 +25,107 @@ def visualize_latent_space():
         return
     model.eval()
 
-    # Load Data (Sample)
-    scraper = MarketScraper(tickers=['^GSPC'], start_date='2010-01-01')
+    # Load Data (All Tickers)
+    tickers = ['^GSPC', '^NDX', '^RUT', '^DJI']
+    scraper = MarketScraper(tickers=tickers, start_date='2010-01-01')
     market_data = scraper.process_data()
-    df = market_data[market_data['Ticker'] == '^GSPC']
 
-    # Generate Z
     z_list = []
     vol_list = []
+    ticker_list = []
     dates = []
 
-    print("Generating Latent Space...")
-    for i in range(30, len(df), 5): # Stride 5 for speed
-        past_30 = df.iloc[i-30:i]
-        x = np.stack([past_30['LogReturn'].values, past_30['RealizedVol'].values], axis=1).reshape(1, 30, 2)
-        x_tensor = torch.tensor(x, dtype=torch.float32).to(device)
+    print("Generating Latent Space for all tickers...")
 
-        with torch.no_grad():
-            _, z = model(x_tensor)
+    for ticker in tickers:
+        if ticker not in market_data['Ticker'].values:
+            continue
 
-        z_list.append(z.cpu().numpy().flatten())
-        vol_list.append(df.iloc[i]['RealizedVol'])
-        dates.append(df.index[i])
+        df = market_data[market_data['Ticker'] == ticker].sort_index()
+
+        # Stride for visualization speed
+        stride = 5
+        for i in range(30, len(df), stride):
+            past_30 = df.iloc[i-30:i]
+            x = np.stack([past_30['LogReturn'].values, past_30['RealizedVol'].values], axis=1).reshape(1, 30, 2)
+            x_tensor = torch.tensor(x, dtype=torch.float32).to(device)
+
+            with torch.no_grad():
+                _, z = model(x_tensor)
+
+            z_list.append(z.cpu().numpy().flatten())
+            vol_list.append(df.iloc[i]['RealizedVol'])
+            ticker_list.append(ticker)
+            dates.append(df.index[i])
 
     z_arr = np.array(z_list)
     vol_arr = np.array(vol_list)
+    ticker_arr = np.array(ticker_list)
 
     os.makedirs('plots', exist_ok=True)
 
-    # 1. Latent Space 3D Scatter
-    print("Plotting Latent Space Topology...")
+    # 1. Latent Space 3D Scatter (Colored by Volatility)
+    print("Plotting Latent Space Topology (Vol)...")
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection='3d')
-    sc = ax.scatter(z_arr[:,0], z_arr[:,1], z_arr[:,2], c=vol_arr, cmap='RdBu_r', alpha=0.6)
+    sc = ax.scatter(z_arr[:,0], z_arr[:,1], z_arr[:,2], c=vol_arr, cmap='RdBu_r', alpha=0.6, s=10)
     plt.colorbar(sc, label='Realized Volatility')
-    ax.set_title("Latent Space Topology (Colored by Volatility)")
+    ax.set_title("Latent Space Topology (All Indices - Volatility)")
     ax.set_xlabel('Latent Dim 1')
     ax.set_ylabel('Latent Dim 2')
     ax.set_zlabel('Latent Dim 3')
     plt.savefig('plots/latent_space_3d.png', dpi=300)
     plt.close()
 
-    # 2. Trajectory (2023)
-    print("Plotting Market Trajectory...")
-    mask_2023 = [str(d).startswith('2023') for d in dates]
-    z_2023 = z_arr[mask_2023]
+    # 2. Latent Space 3D Scatter (Colored by Ticker)
+    print("Plotting Latent Space Topology (Ticker)...")
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+
+    colors = {'^GSPC': 'blue', '^NDX': 'orange', '^RUT': 'green', '^DJI': 'red'}
+
+    for ticker in tickers:
+        mask = ticker_arr == ticker
+        if mask.sum() > 0:
+            ax.scatter(z_arr[mask,0], z_arr[mask,1], z_arr[mask,2],
+                       c=colors.get(ticker, 'black'), label=ticker, alpha=0.5, s=10)
+
+    ax.set_title("Latent Space Topology (Colored by Ticker)")
+    ax.set_xlabel('Latent Dim 1')
+    ax.set_ylabel('Latent Dim 2')
+    ax.set_zlabel('Latent Dim 3')
+    ax.legend()
+    plt.savefig('plots/latent_space_by_ticker.png', dpi=300)
+    plt.close()
+
+    # 3. Trajectory (2023) - Just GSPC for clarity or all?
+    # Let's do GSPC for clarity in the main trajectory plot
+    print("Plotting Market Trajectory (GSPC 2023)...")
+    mask_gspc = (ticker_arr == '^GSPC')
+    dates_gspc = [d for i, d in enumerate(dates) if mask_gspc[i]]
+    z_gspc = z_arr[mask_gspc]
+
+    mask_2023 = [str(d).startswith('2023') for d in dates_gspc]
+    z_2023 = z_gspc[mask_2023]
 
     if len(z_2023) > 0:
         fig = plt.figure(figsize=(10, 8))
         ax = fig.add_subplot(111, projection='3d')
         # Color by time index
-        time_idx = np.arange(len(z_2023))
-        # Plot line segments
         for i in range(len(z_2023)-1):
             ax.plot(z_2023[i:i+2,0], z_2023[i:i+2,1], z_2023[i:i+2,2],
                     color=plt.cm.viridis(i/len(z_2023)))
 
-        ax.set_title("Market Trajectory (2023)")
+        ax.set_title("Market Trajectory (S&P 500 - 2023)")
         ax.set_xlabel('Latent Dim 1')
         ax.set_ylabel('Latent Dim 2')
         ax.set_zlabel('Latent Dim 3')
-        # Add colorbar for time
         sm = plt.cm.ScalarMappable(cmap='viridis', norm=plt.Normalize(vmin=0, vmax=len(z_2023)))
         plt.colorbar(sm, label='Trading Days in 2023')
         plt.savefig('plots/trajectory_2023.png', dpi=300)
         plt.close()
 
-    # 3. Latent Landscape (Heatmap)
+    # 4. Latent Landscape (Heatmap)
     print("Generating Landscape...")
     grid_size = 50
     z1 = np.linspace(z_arr[:,0].min(), z_arr[:,0].max(), grid_size)
@@ -117,16 +151,17 @@ def visualize_latent_space():
     plt.savefig('plots/latent_landscape.png', dpi=300)
     plt.close()
 
-    # 4. Velocity Field
+    # 5. Velocity Field
     print("Generating Velocity Field...")
-    dz = np.diff(z_arr, axis=0)
-    z_start = z_arr[:-1]
-    stride = 10
+    # Use GSPC for velocity field to be consistent
+    dz = np.diff(z_gspc, axis=0)
+    z_start = z_gspc[:-1]
+    stride_v = 2 # Denser for GSPC specific
 
     plt.figure(figsize=(10, 8))
-    plt.quiver(z_start[::stride,0], z_start[::stride,1], dz[::stride,0], dz[::stride,1],
+    plt.quiver(z_start[::stride_v,0], z_start[::stride_v,1], dz[::stride_v,0], dz[::stride_v,1],
                angles='xy', scale_units='xy', scale=1, color='blue', alpha=0.6)
-    plt.title('Latent Velocity Field (Market Flow)')
+    plt.title('Latent Velocity Field (S&P 500 Flow)')
     plt.xlabel('Latent Dim 1')
     plt.ylabel('Latent Dim 2')
     plt.grid(True, alpha=0.3)

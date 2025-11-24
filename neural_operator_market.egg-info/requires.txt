@@ -1,0 +1,8 @@
+torch
+numpy
+pandas
+matplotlib
+plotly
+yfinance
+scipy
+kaleido

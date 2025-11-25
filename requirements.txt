@@ -6,5 +6,6 @@ scipy
 scipy
 matplotlib
 seaborn
+pandas_datareader
 torch
 scikit-learn

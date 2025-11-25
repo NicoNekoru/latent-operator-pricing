@@ -2,33 +2,16 @@ import torch
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import sys
-import os
 
-# Add project root to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from ..src.models import NeuralOperator
+from ..src.data_loader import MarketData, MacroData
+from ..src.strategies.benchmark import BenchmarkStrategy
+from ..src.strategies.regime import RegimeStrategy
+from ..src.strategies.momentum import MomentumStrategy
+from ..src.strategies.mean_reversion import MeanReversionStrategy
+from ..src.strategies.skew import SkewStrategy
 
-from src.models import NeuralOperator
-from src.data_loader import MarketScraper
-import torch
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import sys
-import os
-
-# Add project root to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from src.models import NeuralOperator
-from src.data_loader import MarketScraper
-from src.strategies.benchmark import BenchmarkStrategy
-from src.strategies.regime import RegimeStrategy
-from src.strategies.momentum import MomentumStrategy
-from src.strategies.mean_reversion import MeanReversionStrategy
-from src.strategies.skew import SkewStrategy
-
-def run_backtest_period(model, market_data, tickers, start_date, end_date, title_suffix, filename):
+def run_backtest_period(model, merged_data, tickers, start_date, end_date, title_suffix, filename):
     device = next(model.parameters()).device
     fig, axes = plt.subplots(2, 2, figsize=(15, 12))
     axes = axes.flatten()
@@ -39,11 +22,11 @@ def run_backtest_period(model, market_data, tickers, start_date, end_date, title
         print(f"Processing {ticker}...")
         ax = axes[idx]
 
-        if ticker not in market_data['Ticker'].values:
+        if ticker not in merged_data['Ticker'].values:
             print(f"Warning: No data for {ticker}")
             continue
 
-        df = market_data[market_data['Ticker'] == ticker].sort_index()
+        df = merged_data[merged_data['Ticker'] == ticker].sort_index()
         # Filter by date range
         mask = (df.index >= start_date) & (df.index < end_date)
         df = df[mask]
@@ -60,12 +43,27 @@ def run_backtest_period(model, market_data, tickers, start_date, end_date, title
 
         start_idx = 30
 
-        for i in range(start_idx, len(df)):
-            past_30 = df.iloc[i-30:i]
-            input_returns = past_30['LogReturn'].values
-            input_vols = past_30['RealizedVol'].values
+        # Pre-calculate Volume Feature to match training
+        # Log(Volume + 1) / 20.0
+        vol_feature = np.log(df['Volume'] + 1) / 20.0
 
-            x = np.stack([input_returns, input_vols], axis=1).reshape(1, 30, 2)
+        for i in range(start_idx, len(df)):
+            window = df.iloc[i-30:i]
+            window_vol = vol_feature.iloc[i-30:i]
+
+            # Construct 6-channel input
+            # [LogReturn, RealizedVol, VIX, Volume, TNX, Buffett]
+            features = np.stack([
+                window['LogReturn'].values,
+                window['RealizedVol'].values,
+                window['VIX'].values,
+                window_vol.values,
+                window['TNX'].values,
+                window['Buffett_Ind'].values
+            ], axis=1)
+
+            # Shape: (1, 30, 6)
+            x = features.reshape(1, 30, 6)
             x_tensor = torch.tensor(x, dtype=torch.float32).to(device)
 
             with torch.no_grad():
@@ -129,7 +127,8 @@ def run_backtest():
     print(f"Using device: {device}")
 
     # 1. Load Model
-    model = NeuralOperator(latent_dim=3).to(device)
+    # Note: Input dim is now 6
+    model = NeuralOperator(input_dim=6, latent_dim=3).to(device)
     try:
         model.load_state_dict(torch.load('models/neural_operator.pth', map_location=device))
     except FileNotFoundError:
@@ -140,19 +139,23 @@ def run_backtest():
     # 2. Load Data (All Tickers, Full History)
     tickers = ['^GSPC', '^NDX', '^RUT', '^DJI']
     print(f"Fetching Market Data for {tickers}...")
-    # Load from 2006 to get full training history including 2008 Crisis
-    scraper = MarketScraper(tickers=tickers, start_date='2006-01-01')
-    market_data = scraper.process_data()
+
+    # Use new Modular Loaders
+    market = MarketData(tickers=tickers, start_date='2006-01-01').fetch()
+    macro = MacroData(start_date='2006-01-01').fetch()
+
+    # Merge
+    merged_data = market.join(macro, how='left').ffill().dropna()
 
     # 3. Run Backtests
     # Train Period (In-Sample): 2006-01-01 to 2023-01-01
-    run_backtest_period(model, market_data, tickers, '2006-01-01', '2023-01-01', "Train Set (In-Sample)", "strategy_performance_train.png")
+    run_backtest_period(model, merged_data, tickers, '2006-01-01', '2023-01-01', "Train Set (In-Sample)", "strategy_performance_train_enriched.png")
 
     # Crisis Period (Zoom In): 2006-01-01 to 2011-01-01
-    run_backtest_period(model, market_data, tickers, '2006-01-01', '2011-01-01', "Crisis Period (2008)", "strategy_performance_crisis.png")
+    run_backtest_period(model, merged_data, tickers, '2006-01-01', '2011-01-01', "Crisis Period (2008)", "strategy_performance_crisis_enriched.png")
 
     # Test Period (Out-of-Sample): 2023-01-01 to Present
-    run_backtest_period(model, market_data, tickers, '2023-01-01', '2025-12-31', "Test Set (Out-of-Sample)", "strategy_performance_test.png")
+    run_backtest_period(model, merged_data, tickers, '2023-01-01', '2025-12-31', "Test Set (Out-of-Sample)", "strategy_performance_test_enriched.png")
 
 if __name__ == "__main__":
     run_backtest()

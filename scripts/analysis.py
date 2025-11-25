@@ -7,21 +7,16 @@ import seaborn as sns
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import StandardScaler
-import sys
-import os
 
-# Add project root to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from src.models import NeuralOperator
-from src.data_loader import MarketScraper, HestonSimulator
+from ..src.models import NeuralOperator
+from ..src.data_loader import MarketData, MacroData, HestonGenerator
 
 def visualize_latent_space():
     """
     Generates Latent Space visualizations using Matplotlib.
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = NeuralOperator(latent_dim=3).to(device)
+    model = NeuralOperator(input_dim=6, latent_dim=3).to(device)
     try:
         model.load_state_dict(torch.load('models/neural_operator.pth', map_location=device))
     except FileNotFoundError:
@@ -31,8 +26,10 @@ def visualize_latent_space():
 
     # Load Data (All Tickers)
     tickers = ['^GSPC', '^NDX', '^RUT', '^DJI']
-    scraper = MarketScraper(tickers=tickers, start_date='2010-01-01')
-    market_data = scraper.process_data()
+    print("Fetching Market Data...")
+    market = MarketData(tickers=tickers, start_date='2010-01-01').fetch()
+    macro = MacroData(start_date='2010-01-01').fetch()
+    merged_data = market.join(macro, how='left').ffill().dropna()
 
     z_list = []
     vol_list = []
@@ -42,16 +39,32 @@ def visualize_latent_space():
     print("Generating Latent Space for all tickers...")
 
     for ticker in tickers:
-        if ticker not in market_data['Ticker'].values:
+        if ticker not in merged_data['Ticker'].values:
             continue
 
-        df = market_data[market_data['Ticker'] == ticker].sort_index()
+        df = merged_data[merged_data['Ticker'] == ticker].sort_index()
 
         # Stride for visualization speed
         stride = 5
+
+        # Pre-calculate Volume Feature
+        vol_feature = np.log(df['Volume'] + 1) / 20.0
+
         for i in range(30, len(df), stride):
-            past_30 = df.iloc[i-30:i]
-            x = np.stack([past_30['LogReturn'].values, past_30['RealizedVol'].values], axis=1).reshape(1, 30, 2)
+            window = df.iloc[i-30:i]
+            window_vol = vol_feature.iloc[i-30:i]
+
+            # Construct 6-channel input
+            features = np.stack([
+                window['LogReturn'].values,
+                window['RealizedVol'].values,
+                window['VIX'].values,
+                window_vol.values,
+                window['TNX'].values,
+                window['Buffett_Ind'].values
+            ], axis=1)
+
+            x = features.reshape(1, 30, 6)
             x_tensor = torch.tensor(x, dtype=torch.float32).to(device)
 
             with torch.no_grad():
@@ -152,11 +165,6 @@ def visualize_latent_space():
 
     # 6. Correlation Heatmap
     print("Generating Correlation Heatmap...")
-    # We need to align Z with original features (Returns, Vol)
-    # Re-construct a DF with Z and features
-    # Note: z_arr corresponds to the loop above. We need to grab the features from that loop.
-    # Ideally we should have saved them. Let's assume z_arr and vol_arr are aligned.
-    # We only have Vol saved. Let's use Vol.
 
     corr_df = pd.DataFrame(z_arr, columns=[f'Latent_{i+1}' for i in range(z_arr.shape[1])])
     corr_df['Realized_Vol'] = vol_arr
@@ -175,7 +183,7 @@ def compare_indices():
     Generates comparison graph for GSPC vs NDX using Matplotlib.
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = NeuralOperator(latent_dim=3).to(device)
+    model = NeuralOperator(input_dim=6, latent_dim=3).to(device)
     try:
         model.load_state_dict(torch.load('models/neural_operator.pth', map_location=device))
     except FileNotFoundError: return
@@ -183,23 +191,27 @@ def compare_indices():
 
     print("Fetching Market Data for Comparison...")
     tickers = ['^GSPC', '^NDX', '^RUT', '^DJI']
-    scraper = MarketScraper(tickers=tickers, start_date='2023-01-01')
-    market_data = scraper.process_data()
-    simulator = HestonSimulator()
+    market = MarketData(tickers=tickers, start_date='2023-01-01').fetch()
+    macro = MacroData(start_date='2023-01-01').fetch()
+    merged_data = market.join(macro, how='left').ffill().dropna()
+
+    simulator = HestonGenerator()
 
     results = {}
 
     for ticker in tickers:
         print(f"Processing {ticker}...")
-        if ticker not in market_data['Ticker'].values:
+        if ticker not in merged_data['Ticker'].values:
             print(f"Warning: No data for {ticker}")
             continue
 
-        df = market_data[market_data['Ticker'] == ticker].sort_index()
+        df = merged_data[merged_data['Ticker'] == ticker].sort_index()
         dates, true_prices, pred_prices, maes = [], [], [], []
 
         start_idx = 30
         end_idx = min(len(df), 230)
+
+        vol_feature = np.log(df['Volume'] + 1) / 20.0
 
         for i in range(start_idx, end_idx):
             row = df.iloc[i]
@@ -208,13 +220,29 @@ def compare_indices():
 
             # Ground Truth
             v0 = realized_vol ** 2
-            surface = simulator.generate_surface(spot, v0, 2.0, v0, 0.3, -0.7)
-            atm_true = surface[3]['Price']
-            flat_true = np.array([p['Price'] for p in surface])
+            simulator.setup_engine(spot, v0, 2.0, v0, 0.3, -0.7)
+            surface = simulator.generate(spot)
+            atm_true = surface[3] # 3rd element is ATM? Need to check generate order.
+            # generate returns array of 21 prices.
+            # maturities [1,3,6] * moneyness [0.8...1.2] (7)
+            # 3 months is index 1. ATM is index 3 in moneyness.
+            # So index = 1*7 + 3 = 10.
+            atm_true = surface[10]
 
             # Predict
-            past_30 = df.iloc[i-30:i]
-            x = np.stack([past_30['LogReturn'].values, past_30['RealizedVol'].values], axis=1).reshape(1, 30, 2)
+            window = df.iloc[i-30:i]
+            window_vol = vol_feature.iloc[i-30:i]
+
+            features = np.stack([
+                window['LogReturn'].values,
+                window['RealizedVol'].values,
+                window['VIX'].values,
+                window_vol.values,
+                window['TNX'].values,
+                window['Buffett_Ind'].values
+            ], axis=1)
+
+            x = features.reshape(1, 30, 6)
             x_tensor = torch.tensor(x, dtype=torch.float32).to(device)
 
             with torch.no_grad():
@@ -223,8 +251,8 @@ def compare_indices():
 
             dates.append(row.name)
             true_prices.append(atm_true)
-            pred_prices.append(y_pred[3])
-            maes.append(np.mean(np.abs(y_pred - flat_true)))
+            pred_prices.append(y_pred[10]) # ATM 3-month
+            maes.append(np.mean(np.abs(y_pred - surface)))
 
         results[ticker] = {'dates': dates, 'true': true_prices, 'pred': pred_prices, 'mae': maes}
 
@@ -239,7 +267,7 @@ def compare_indices():
         ax2.plot(results[ticker]['dates'], results[ticker]['mae'], label=f'{ticker} MAE', color=c)
 
     ax1.set_title("Model Generalization: Multi-Index Comparison")
-    ax1.set_ylabel("Normalized Price")
+    ax1.set_ylabel("Normalized Price (ATM 3-Month)")
     ax1.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     ax1.grid(True, alpha=0.3)
 

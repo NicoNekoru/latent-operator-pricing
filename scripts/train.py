@@ -2,15 +2,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-import sys
-import os
 
-# Add project root to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from src.models import NeuralOperator
-from src.dataset import OptionDataset
-from src.utils import calculate_metrics
+from ..src.models import NeuralOperator
+from ..src.dataset import OptionDataset
+from ..src.utils import calculate_metrics
 
 class PhysicsInformedLoss(nn.Module):
     def __init__(self, arbitrage_weight=0.1):
@@ -43,7 +38,8 @@ def train_model(epochs=100, batch_size=32, lr=1e-3, latent_dim=3):
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
-    model = NeuralOperator(latent_dim=latent_dim).to(device)
+    # Explicitly pass input_dim=6
+    model = NeuralOperator(input_dim=6, latent_dim=latent_dim).to(device)
     criterion = PhysicsInformedLoss(arbitrage_weight=1.0)
     optimizer = optim.AdamW(model.parameters(), lr=lr)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)

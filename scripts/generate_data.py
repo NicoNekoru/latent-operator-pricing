@@ -1,11 +1,6 @@
 import argparse
-import sys
-import os
 
-# Add project root to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from src.data_loader import generate_dataset
+from ..src.data_loader import generate_dataset
 
 def main():
     parser = argparse.ArgumentParser(description="Generate Option Pricing Dataset from Market Data")

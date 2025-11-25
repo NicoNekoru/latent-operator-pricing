@@ -30,13 +30,11 @@ class OptionDataset(Dataset):
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
 
-        # Inputs: (30, 2)
-        returns = np.array(row['Input_Returns'], dtype=np.float32)
-        vols = np.array(row['Input_Vols'], dtype=np.float32)
+        # Input: Flattened (180,) -> Reshape to (30, 6)
+        x_flat = np.array(row['Input_Features'], dtype=np.float32)
+        x = x_flat.reshape(30, 6)
 
-        x = np.stack([returns, vols], axis=1) # Shape (30, 2)
-
-        # Targets: (21,)
+        # Target: (21,)
         y = np.array(row['Target_Prices'], dtype=np.float32)
 
         return torch.tensor(x), torch.tensor(y)

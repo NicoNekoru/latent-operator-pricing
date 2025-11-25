@@ -1,14 +1,9 @@
 import torch
 from torch.utils.data import DataLoader
-import sys
-import os
 
-# Add project root to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from src.models import NeuralOperator
-from src.dataset import OptionDataset
-from src.utils import calculate_metrics
+from ..src.models import NeuralOperator
+from ..src.dataset import OptionDataset
+from ..src.utils import calculate_metrics
 
 def evaluate():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

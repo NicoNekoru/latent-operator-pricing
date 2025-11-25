@@ -1,34 +1,33 @@
 from .base import BaseStrategy
 import pandas as pd
 import numpy as np
+from .base import BaseStrategy
+import pandas as pd
+import numpy as np
 
 class MomentumStrategy(BaseStrategy):
     def __init__(self, lookback=5):
         super().__init__("Latent Momentum")
         self.lookback = lookback
 
-    def generate_signals(self, z_history: np.ndarray) -> pd.Series:
-        # Calculate Latent Norm
-        latent_norm = np.linalg.norm(z_history, axis=1)
+    def generate_signals(self, z_history: np.ndarray, prices=None) -> pd.Series:
+        vol_proxy = np.linalg.norm(z_history, axis=1)
+        vol_series = pd.Series(vol_proxy)
+
+        # Simple MA crossover on Volatility
+        ma = vol_series.rolling(window=self.lookback).mean()
 
         signals = []
-
-        for i in range(len(latent_norm)):
+        for i in range(len(vol_series)):
             if i < self.lookback:
                 signals.append(1)
                 continue
 
-            current_vol = latent_norm[i]
-            past_vol = latent_norm[i-self.lookback]
-
-            # Change in Volatility
-            delta_vol = current_vol - past_vol
-
-            if delta_vol > 0:
-                # Volatility is increasing -> Panic -> Cash
+            if vol_series[i] > ma[i]:
+                # Volatility is rising -> Defensive
                 signals.append(0)
             else:
-                # Volatility is decreasing -> Calming -> Long
+                # Volatility is falling -> Long
                 signals.append(1)
 
         return pd.Series(signals)

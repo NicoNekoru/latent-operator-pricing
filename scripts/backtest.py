@@ -14,6 +14,7 @@ from src.strategies.benchmark import BenchmarkStrategy
 from src.strategies.regime import RegimeStrategy
 from src.strategies.momentum import MomentumStrategy
 from src.strategies.mean_reversion import MeanReversionStrategy
+from src.strategies.skew import SkewStrategy
 
 def run_backtest():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -49,8 +50,9 @@ def run_backtest():
         df = market_data[market_data['Ticker'] == ticker].sort_index()
         df = df[df.index >= '2023-01-01']
 
-        # 3. Generate Latent Trajectory
+        # 3. Generate Latent Trajectory & Decode Prices
         z_history = []
+        price_history = []
         dates = []
         returns = []
 
@@ -65,14 +67,18 @@ def run_backtest():
             x_tensor = torch.tensor(x, dtype=torch.float32).to(device)
 
             with torch.no_grad():
-                _, z = model(x_tensor)
+                # Get both Z and the decoded Prices
+                y_pred, z = model(x_tensor)
                 z_np = z.cpu().numpy().flatten()
+                prices_np = y_pred.cpu().numpy().flatten()
 
             z_history.append(z_np)
+            price_history.append(prices_np)
             dates.append(df.index[i])
             returns.append(df.iloc[i]['LogReturn'])
 
         z_history = np.array(z_history)
+        price_history = np.array(price_history)
         returns = np.array(returns)
 
         # 4. Run Strategies
@@ -80,13 +86,15 @@ def run_backtest():
             BenchmarkStrategy(),
             RegimeStrategy(threshold_percentile=80),
             MomentumStrategy(lookback=5),
-            MeanReversionStrategy(z_score_threshold=2.0)
+            MeanReversionStrategy(z_score_threshold=2.0),
+            SkewStrategy(skew_threshold=0.05)
         ]
 
         results = {}
 
         for strat in strategies:
-            signals = strat.generate_signals(z_history)
+            # Pass decoded prices to strategies (SkewStrategy needs it)
+            signals = strat.generate_signals(z_history, prices=price_history)
             strat_returns = signals.shift(1).fillna(0).values * returns
             cum_ret = np.cumprod(1 + strat_returns) - 1
 

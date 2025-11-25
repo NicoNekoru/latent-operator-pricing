@@ -11,14 +11,15 @@ class BaseStrategy(ABC):
         return self._name
 
     @abstractmethod
-    def generate_signals(self, z_history: np.ndarray) -> pd.Series:
+    def generate_signals(self, z_history: np.ndarray, prices: np.ndarray = None) -> pd.Series:
         """
         Generate trading signals based on latent space history.
 
         Args:
             z_history (np.ndarray): Array of shape (T, latent_dim) containing latent vectors.
+            prices (np.ndarray, optional): Array of shape (T, 21) containing predicted option prices.
 
         Returns:
-            pd.Series: Series of binary signals (1 for Long, 0 for Cash) indexed by time.
+            pd.Series: Series of binary signals (1 for Long, 0 for Cash, -1 for Short) indexed by time.
         """
         pass

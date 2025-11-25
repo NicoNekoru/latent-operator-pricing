@@ -8,34 +8,22 @@ class MeanReversionStrategy(BaseStrategy):
         self.z_score_threshold = z_score_threshold
         self.window = window
 
-    def generate_signals(self, z_history: np.ndarray) -> pd.Series:
-        latent_norm = np.linalg.norm(z_history, axis=1)
+    def generate_signals(self, z_history: np.ndarray, prices=None) -> pd.Series:
+        vol_proxy = np.linalg.norm(z_history, axis=1)
+        mean_vol = np.mean(vol_proxy)
+        std_vol = np.std(vol_proxy)
+
+        z_scores = (vol_proxy - mean_vol) / (std_vol + 1e-9)
 
         signals = []
-
-        for i in range(len(latent_norm)):
-            if i < self.window:
+        for z in z_scores:
+            if z > self.z_score_threshold:
+                # Extreme Vol -> Expect Reversion -> Long
                 signals.append(1)
-                continue
-
-            # Rolling Z-Score
-            window_data = latent_norm[i-self.window:i]
-            mu = np.mean(window_data)
-            sigma = np.std(window_data)
-
-            if sigma == 0:
-                z_score = 0
-            else:
-                z_score = (latent_norm[i] - mu) / sigma
-
-            if z_score > self.z_score_threshold:
-                # Extreme Volatility -> Oversold -> Buy the Dip
-                signals.append(1)
-            elif z_score < -1.0:
-                # Very Low Volatility -> Complacency -> Risk of Spike -> Cash
+            elif z < -self.z_score_threshold:
+                # Extreme Calm -> Expect Spike -> Cash
                 signals.append(0)
             else:
-                # Normal Regime -> Long
                 signals.append(1)
 
         return pd.Series(signals)

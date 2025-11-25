@@ -393,4 +393,26 @@ is fixed?
 
 *Edited relevant file*
 
-*Edited relevant file*
+
+# Agent Log: Strategy Refinement & Historical Expansion
+
+## Current Context
+The user noticed that the `Neural Skew` strategy, despite my optimistic analysis, actually shows negative Sharpe ratios in the plots. This is a critical discrepancy. I need to figure out *why* the strategy is failing before I can claim it works.
+
+## Hypothesis 1: Signal Lag
+*   **Logic:** High Skew (Puts expensive) usually happens *during* or *after* a crash has started.
+*   **Problem:** If we go Short (-1) only *after* the skew spikes, we might be selling at the bottom.
+*   **Fix:** We might need to detect the *rate of change* of skew, or use a lower threshold to catch the "pre-crash" anxiety.
+
+## Hypothesis 2: "Wall of Worry" (False Positives)
+*   **Logic:** In a bull market (like 2013-2019 or 2023-2024), skew can remain persistently high because investors are hedging against a crash that never comes.
+*   **Problem:** The strategy stays Short/Cash while the market rallies, bleeding money.
+*   **Fix:** Combine Skew with Momentum. Only Short if Skew is High AND Price Momentum is Negative.
+
+## Action Plan
+1.  **Expand Data:** Fetch 2006-2010 data. The 2008 crisis is the ultimate test case. If the strategy doesn't catch 2008, it's useless.
+2.  **Inspect Thresholds:** The current threshold (`0.05`) might be arbitrary. I should look at the distribution of skew values.
+3.  **Refine Strategy:** I will likely implement a "Skew + Momentum" filter to avoid the "Wall of Worry" trap.
+
+## Execution
+I will start by updating the backtest script to pull the longer history and then analyze the skew distribution.

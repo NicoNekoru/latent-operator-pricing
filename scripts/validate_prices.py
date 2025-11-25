@@ -1,17 +1,3 @@
-import yfinance as yf
-import pandas as pd
-import numpy as np
-import sys
-import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from src.data_loader import HestonSimulator
-import matplotlib.pyplot as plt
-
-def validate_prices():
-    print("Fetching SPY data...")
-    spy = yf.Ticker("SPY")
-
-    # Get current spot price
     history = spy.history(period="1mo")
     current_spot = history['Close'].iloc[-1]
     print(f"Current SPY Spot: {current_spot:.2f}")

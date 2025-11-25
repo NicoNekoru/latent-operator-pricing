@@ -1,9 +1,10 @@
 import torch
 from torch.utils.data import DataLoader
+import os
 
-from ..src.models import NeuralOperator
-from ..src.dataset import OptionDataset
-from ..src.utils import calculate_metrics
+from src.models import NeuralOperator
+from src.dataset import OptionDataset
+from src.utils import calculate_metrics
 
 def evaluate():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

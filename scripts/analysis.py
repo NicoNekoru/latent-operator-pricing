@@ -7,9 +7,10 @@ import seaborn as sns
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import StandardScaler
+import os
 
-from ..src.models import NeuralOperator
-from ..src.data_loader import MarketData, MacroData, HestonGenerator
+from src.models import NeuralOperator
+from src.data_loader import MarketData, MacroData, HestonGenerator
 
 def visualize_latent_space():
     """

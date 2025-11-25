@@ -1,6 +1,7 @@
 import argparse
+import os
 
-from ..src.data_loader import generate_dataset
+from src.data_loader import generate_dataset
 
 def main():
     parser = argparse.ArgumentParser(description="Generate Option Pricing Dataset from Market Data")

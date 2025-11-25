@@ -116,3 +116,52 @@ A cumulative return comparison of different trading strategies informed by the m
 
 ### Key Insight
 Demonstrates the practical utility of the learned latent representation for risk management and alpha generation.
+
+---
+
+## 8. PCA Projection (2D)
+**File:** `plots/pca_projection.png`
+
+### What it is
+A projection of the high-dimensional latent space onto its first two Principal Components. Points are colored by Realized Volatility.
+
+### How to Read It
+- **Axes:** PC1 and PC2 represent the directions of maximum variance in the latent space.
+- **Gradient:** A smooth color gradient from Blue (Low Vol) to Red (High Vol) along PC1 indicates that the primary factor learned by the model is indeed volatility.
+- **Spread:** The spread along PC2 indicates secondary features (possibly skew or kurtosis).
+
+---
+
+## 9. t-SNE Manifold Projection
+**File:** `plots/tsne_projection.png`
+
+### What it is
+A non-linear projection of the latent manifold into 2D using t-Distributed Stochastic Neighbor Embedding.
+
+### How to Read It
+- **Clusters:** t-SNE preserves local neighborhoods. Distinct clusters indicate distinct market "regimes" that are topologically separated.
+- **Continuity:** If the points form a continuous "snake" or curve, it suggests the market moves smoothly between states rather than jumping between discrete clusters.
+
+---
+
+## 10. Parallel Coordinates Plot
+**File:** `plots/parallel_coordinates.png`
+
+### What it is
+A visualization of the latent vector values ($Z_1, Z_2, Z_3$) for different volatility regimes. Each line represents a single day's market state.
+
+### How to Read It
+- **Disentanglement:** If "High Volatility" lines (Yellow) all have high $Z_1$ and low $Z_2$, while "Low Volatility" lines (Purple) have low $Z_1$, it means $Z_1$ is disentangled and represents volatility.
+- **Crossing Lines:** If lines cross chaotically, the dimensions are entangled.
+
+---
+
+## 11. Latent Feature Correlation Heatmap
+**File:** `plots/latent_correlation.png`
+
+### What it is
+The correlation matrix between the learned Latent Dimensions and the physical "Realized Volatility".
+
+### How to Read It
+- **Feature Attribution:** If `Latent_1` has a +0.9 correlation with `Realized_Vol`, we can scientifically claim that the model has "discovered" volatility as a primary factor.
+- **Independence:** Low correlation between latent dimensions (off-diagonal elements close to 0) indicates an efficient, orthogonal encoding.

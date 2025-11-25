@@ -3,6 +3,10 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+import seaborn as sns
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+from sklearn.preprocessing import StandardScaler
 import sys
 import os
 
@@ -98,77 +102,73 @@ def visualize_latent_space():
     plt.savefig('plots/latent_space_by_ticker.png', dpi=300)
     plt.close()
 
-    # 3. Trajectory (2023) - Just GSPC for clarity or all?
-    # Let's do GSPC for clarity in the main trajectory plot
-    print("Plotting Market Trajectory (GSPC 2023)...")
-    mask_gspc = (ticker_arr == '^GSPC')
-    dates_gspc = [d for i, d in enumerate(dates) if mask_gspc[i]]
-    z_gspc = z_arr[mask_gspc]
+    # --- Advanced Visualizations ---
 
-    mask_2023 = [str(d).startswith('2023') for d in dates_gspc]
-    z_2023 = z_gspc[mask_2023]
-
-    if len(z_2023) > 0:
-        fig = plt.figure(figsize=(10, 8))
-        ax = fig.add_subplot(111, projection='3d')
-        # Color by time index
-        for i in range(len(z_2023)-1):
-            ax.plot(z_2023[i:i+2,0], z_2023[i:i+2,1], z_2023[i:i+2,2],
-                    color=plt.cm.viridis(i/len(z_2023)))
-
-        ax.set_title("Market Trajectory (S&P 500 - 2023)")
-        ax.set_xlabel('Latent Dim 1')
-        ax.set_ylabel('Latent Dim 2')
-        ax.set_zlabel('Latent Dim 3')
-        sm = plt.cm.ScalarMappable(cmap='viridis', norm=plt.Normalize(vmin=0, vmax=len(z_2023)))
-        plt.colorbar(sm, label='Trading Days in 2023')
-        plt.savefig('plots/trajectory_2023.png', dpi=300)
-        plt.close()
-
-    # 4. Latent Landscape (Heatmap)
-    print("Generating Landscape...")
-    grid_size = 50
-    z1 = np.linspace(z_arr[:,0].min(), z_arr[:,0].max(), grid_size)
-    z2 = np.linspace(z_arr[:,1].min(), z_arr[:,1].max(), grid_size)
-    z3_mean = z_arr[:,2].mean()
-
-    Z1, Z2 = np.meshgrid(z1, z2)
-    prices = np.zeros((grid_size, grid_size))
-
-    for i in range(grid_size):
-        for j in range(grid_size):
-            z_vec = torch.tensor([[Z1[i,j], Z2[i,j], z3_mean]], dtype=torch.float32).to(device)
-            with torch.no_grad():
-                p = model.decoder(z_vec).cpu().numpy().flatten()
-            prices[i,j] = p[3] # ATM Price
+    # 3. PCA Projection (2D)
+    print("Generating PCA Projection...")
+    pca = PCA(n_components=2)
+    z_pca = pca.fit_transform(z_arr)
 
     plt.figure(figsize=(10, 8))
-    plt.contourf(Z1, Z2, prices, levels=50, cmap='viridis')
-    plt.colorbar(label='ATM Option Price')
-    plt.title('Latent Physics Landscape (ATM Price Surface)')
-    plt.xlabel('Latent Dim 1')
-    plt.ylabel('Latent Dim 2')
-    plt.savefig('plots/latent_landscape.png', dpi=300)
+    sc = plt.scatter(z_pca[:,0], z_pca[:,1], c=vol_arr, cmap='RdBu_r', alpha=0.6, s=10)
+    plt.colorbar(sc, label='Realized Volatility')
+    plt.title(f'PCA Projection of Latent Space (Explained Var: {pca.explained_variance_ratio_.sum():.2f})')
+    plt.xlabel('PC 1')
+    plt.ylabel('PC 2')
+    plt.savefig('plots/pca_projection.png', dpi=300)
     plt.close()
 
-    # 5. Velocity Field
-    print("Generating Velocity Field...")
-    # Use GSPC for velocity field to be consistent
-    dz = np.diff(z_gspc, axis=0)
-    z_start = z_gspc[:-1]
-    stride_v = 2 # Denser for GSPC specific
+    # 4. t-SNE Projection (2D)
+    print("Generating t-SNE Projection (this may take a moment)...")
+    # Subsample for t-SNE speed if needed, but ~4000 points is fine
+    tsne = TSNE(n_components=2, random_state=42, perplexity=30)
+    z_tsne = tsne.fit_transform(z_arr)
 
     plt.figure(figsize=(10, 8))
-    plt.quiver(z_start[::stride_v,0], z_start[::stride_v,1], dz[::stride_v,0], dz[::stride_v,1],
-               angles='xy', scale_units='xy', scale=1, color='blue', alpha=0.6)
-    plt.title('Latent Velocity Field (S&P 500 Flow)')
-    plt.xlabel('Latent Dim 1')
-    plt.ylabel('Latent Dim 2')
-    plt.grid(True, alpha=0.3)
-    plt.savefig('plots/latent_velocity.png', dpi=300)
+    sc = plt.scatter(z_tsne[:,0], z_tsne[:,1], c=vol_arr, cmap='RdBu_r', alpha=0.6, s=10)
+    plt.colorbar(sc, label='Realized Volatility')
+    plt.title('t-SNE Manifold Projection')
+    plt.xlabel('t-SNE 1')
+    plt.ylabel('t-SNE 2')
+    plt.savefig('plots/tsne_projection.png', dpi=300)
     plt.close()
 
-    print("Latent space visualizations saved.")
+    # 5. Parallel Coordinates Plot
+    print("Generating Parallel Coordinates Plot...")
+    # Create a DataFrame for plotting
+    # Normalize Z for better visualization if ranges differ wildly (though they shouldn't)
+    z_df = pd.DataFrame(z_arr, columns=[f'Z{i+1}' for i in range(z_arr.shape[1])])
+    z_df['Volatility'] = vol_arr
+    # Bin volatility for coloring lines
+    z_df['Regime'] = pd.qcut(z_df['Volatility'], q=4, labels=['Low', 'Medium', 'High', 'Extreme'])
+
+    plt.figure(figsize=(12, 6))
+    pd.plotting.parallel_coordinates(z_df.sample(500), 'Regime', colormap='viridis', alpha=0.5)
+    plt.title('Parallel Coordinates of Latent Dimensions by Volatility Regime')
+    plt.xlabel('Latent Dimension')
+    plt.ylabel('Value')
+    plt.savefig('plots/parallel_coordinates.png', dpi=300)
+    plt.close()
+
+    # 6. Correlation Heatmap
+    print("Generating Correlation Heatmap...")
+    # We need to align Z with original features (Returns, Vol)
+    # Re-construct a DF with Z and features
+    # Note: z_arr corresponds to the loop above. We need to grab the features from that loop.
+    # Ideally we should have saved them. Let's assume z_arr and vol_arr are aligned.
+    # We only have Vol saved. Let's use Vol.
+
+    corr_df = pd.DataFrame(z_arr, columns=[f'Latent_{i+1}' for i in range(z_arr.shape[1])])
+    corr_df['Realized_Vol'] = vol_arr
+
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(corr_df.corr(), annot=True, cmap='coolwarm', vmin=-1, vmax=1)
+    plt.title('Latent Space Feature Correlation')
+    plt.tight_layout()
+    plt.savefig('plots/latent_correlation.png', dpi=300)
+    plt.close()
+
+    print("Advanced visualizations saved.")
 
 def compare_indices():
     """

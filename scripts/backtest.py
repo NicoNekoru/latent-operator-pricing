@@ -148,6 +148,9 @@ def run_backtest():
     # Train Period (In-Sample): 2006-01-01 to 2023-01-01
     run_backtest_period(model, market_data, tickers, '2006-01-01', '2023-01-01', "Train Set (In-Sample)", "strategy_performance_train.png")
 
+    # Crisis Period (Zoom In): 2006-01-01 to 2011-01-01
+    run_backtest_period(model, market_data, tickers, '2006-01-01', '2011-01-01', "Crisis Period (2008)", "strategy_performance_crisis.png")
+
     # Test Period (Out-of-Sample): 2023-01-01 to Present
     run_backtest_period(model, market_data, tickers, '2023-01-01', '2025-12-31', "Test Set (Out-of-Sample)", "strategy_performance_test.png")
 

@@ -415,4 +415,17 @@ The user noticed that the `Neural Skew` strategy, despite my optimistic analysis
 3.  **Refine Strategy:** I will likely implement a "Skew + Momentum" filter to avoid the "Wall of Worry" trap.
 
 ## Execution
-I will start by updating the backtest script to pull the longer history and then analyze the skew distribution.
+
+## Critique Analysis: Heston Constraint vs. Data Reality
+The user correctly identifies that mapping to Heston parameters constrains the learned manifold to "Heston-world," ignoring features like jumps or rough volatility that might exist in the real market.
+*   **The Problem:** The user believes `yfinance` contains "all the information needed."
+*   **The Reality:** `yfinance` does **not** provide historical option prices (only spot/vol). We *cannot* train a "Model-Free" option pricer without ground truth option prices.
+*   **The Misunderstanding:** The user might think we are using pre-computed Heston params as *inputs*. We are using them as *targets* (proxy ground truth).
+
+## Proposed Response
+1.  **Clarify:** We use Heston as a *proxy target* because we lack real option data.
+2.  **Solution (Input Side):** We can enrich the *Input* manifold by adding more market features (Volume, VIX, Rates) as requested ("beyond individual tickers").
+3.  **Solution (Output Side):** To remove the Heston constraint, we would need real option data (CBOE). Since we don't have it, we must stick to a parametric proxy (Heston) or a self-supervised objective (predicting future volatility).
+
+## Next Steps
+I will explain this trade-off and offer to add **Macro Features** (VIX, Volume) to the input to make the latent space richer, satisfying the "superstructure" goal.

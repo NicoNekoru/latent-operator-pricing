@@ -14,3 +14,35 @@ def calculate_metrics(y_pred, y_true):
     dollar_err = torch.mean(diff) * 4000.0
 
     return mape.item(), dollar_err.item()
+
+def black_scholes_price(S, K, T, r, sigma, option_type='call'):
+    """
+    Vectorized Black-Scholes Pricing.
+
+    Args:
+        S: Spot Price
+        K: Strike Price
+        T: Time to Maturity (years)
+        r: Risk-free rate
+        sigma: Volatility
+        option_type: 'call' or 'put'
+
+    Returns:
+        Option Price
+    """
+    import numpy as np
+    from scipy.stats import norm
+
+    # Avoid division by zero
+    T = np.maximum(T, 1e-9)
+    sigma = np.maximum(sigma, 1e-9)
+
+    d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
+    d2 = d1 - sigma * np.sqrt(T)
+
+    if option_type == 'call':
+        price = S * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
+    else:
+        price = K * np.exp(-r * T) * norm.cdf(-d2) - S * norm.cdf(-d1)
+
+    return price

@@ -7,10 +7,101 @@ import seaborn as sns
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from matplotlib.colors import ListedColormap
 import os
 
 from src.models import NeuralOperator
 from src.data_loader import MarketData, MacroData, HestonGenerator
+
+def visualize_trajectories(z_arr, dates, ticker_arr, vol_arr):
+    """
+    Plots the specific trajectories of crisis periods in the Latent Space.
+    """
+    print("Plotting Crisis Trajectories...")
+
+    # Define Crisis Periods
+    periods = {
+        '2008 Crisis': ('2008-09-01', '2009-03-01'),
+        '2020 COVID': ('2020-02-01', '2020-04-01'),
+        '2022 Inflation': ('2022-01-01', '2022-06-01')
+    }
+
+    fig = plt.figure(figsize=(15, 5))
+
+    # Background: All points (faint)
+    # We use the first 3 dimensions of Z
+
+    for i, (name, (start, end)) in enumerate(periods.items()):
+        ax = fig.add_subplot(1, 3, i+1, projection='3d')
+
+        # Plot Background (All Data)
+        ax.scatter(z_arr[:,0], z_arr[:,1], z_arr[:,2], c='lightgray', alpha=0.1, s=1)
+
+        # Filter for Period and Ticker (e.g. GSPC)
+        mask_ticker = ticker_arr == '^GSPC'
+        mask_date = (pd.to_datetime(dates) >= start) & (pd.to_datetime(dates) <= end)
+        mask = mask_ticker & mask_date
+
+        z_seg = z_arr[mask]
+        vol_seg = vol_arr[mask]
+
+        if len(z_seg) > 0:
+            # Plot Trajectory Line
+            ax.plot(z_seg[:,0], z_seg[:,1], z_seg[:,2], color='black', linewidth=1.5, alpha=0.7)
+
+            # Plot Points colored by Volatility
+            sc = ax.scatter(z_seg[:,0], z_seg[:,1], z_seg[:,2], c=vol_seg, cmap='inferno', s=20)
+
+            # Mark Start and End
+            ax.scatter(z_seg[0,0], z_seg[0,1], z_seg[0,2], c='green', s=100, marker='^', label='Start')
+            ax.scatter(z_seg[-1,0], z_seg[-1,1], z_seg[-1,2], c='red', s=100, marker='v', label='End')
+
+        ax.set_title(f"{name} ({start} - {end})")
+        ax.set_xlabel('Z1')
+        ax.set_ylabel('Z2')
+        ax.set_zlabel('Z3')
+
+    plt.tight_layout()
+    plt.savefig('plots/crisis_trajectories.png', dpi=300)
+    plt.close()
+
+def visualize_clusters(z_arr, n_clusters=3):
+    """
+    Performs K-Means clustering on the Latent Space and visualizes regimes.
+    """
+    print(f"Performing K-Means Clustering (k={n_clusters})...")
+
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+    labels = kmeans.fit_predict(z_arr)
+
+    # 3D Scatter of Clusters
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Create a custom colormap for regimes
+    cmap = ListedColormap(['green', 'orange', 'red'])
+
+    sc = ax.scatter(z_arr[:,0], z_arr[:,1], z_arr[:,2], c=labels, cmap=cmap, alpha=0.6, s=10)
+
+    # Add Legend manually
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Line2D([0], [0], marker='o', color='w', markerfacecolor='green', label='Regime 0 (Calm?)'),
+        Line2D([0], [0], marker='o', color='w', markerfacecolor='orange', label='Regime 1 (Transition?)'),
+        Line2D([0], [0], marker='o', color='w', markerfacecolor='red', label='Regime 2 (Crisis?)')
+    ]
+    ax.legend(handles=legend_elements)
+
+    ax.set_title(f"Latent Market Regimes (K-Means, k={n_clusters})")
+    ax.set_xlabel('Z1')
+    ax.set_ylabel('Z2')
+    ax.set_zlabel('Z3')
+
+    plt.savefig('plots/latent_clusters.png', dpi=300)
+    plt.close()
+
+    return labels
 
 def visualize_latent_space():
     """
@@ -116,15 +207,171 @@ def visualize_latent_space():
     plt.savefig('plots/latent_space_by_ticker.png', dpi=300)
     plt.close()
 
+    return labels
+
+def visualize_velocity_field(z_arr, vol_arr):
+    """
+    Plots the velocity field (quiver) of the latent space to show flow dynamics.
+    """
+    print("Generating Latent Velocity Field...")
+
+    # Calculate Velocity (dZ)
+    dz = np.diff(z_arr, axis=0)
+    # Pad last element to match shape
+    dz = np.vstack([dz, dz[-1]])
+
+    # Subsample for clarity (too many arrows is messy)
+    stride = 10
+    z_sub = z_arr[::stride]
+    dz_sub = dz[::stride]
+    vol_sub = vol_arr[::stride]
+
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Quiver Plot
+    # Length of arrow proportional to speed
+    ax.quiver(z_sub[:,0], z_sub[:,1], z_sub[:,2],
+              dz_sub[:,0], dz_sub[:,1], dz_sub[:,2],
+              length=0.5, normalize=True, alpha=0.4, color='gray')
+
+    # Scatter on top for context
+    sc = ax.scatter(z_sub[:,0], z_sub[:,1], z_sub[:,2], c=vol_sub, cmap='coolwarm', s=5)
+
+    ax.set_title("Latent Space Velocity Field (Market Flow)")
+    ax.set_xlabel('Z1')
+    ax.set_ylabel('Z2')
+    ax.set_zlabel('Z3')
+
+    plt.savefig('plots/latent_velocity.png', dpi=300)
+    plt.close()
+
+def visualize_latent_space():
+    """
+    Generates Latent Space visualizations using Matplotlib.
+    """
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = NeuralOperator(input_dim=6, latent_dim=3).to(device)
+    try:
+        model.load_state_dict(torch.load('models/neural_operator.pth', map_location=device))
+    except FileNotFoundError:
+        print("Model not found. Train first.")
+        return
+    model.eval()
+
+    # Load Data (All Tickers)
+    tickers = ['^GSPC', '^NDX', '^RUT', '^DJI']
+    print("Fetching Market Data...")
+    market = MarketData(tickers=tickers, start_date='2006-01-01').fetch() # Expanded range for 2008
+    macro = MacroData(start_date='2006-01-01').fetch()
+    merged_data = market.join(macro, how='left').ffill().dropna()
+
+    z_list = []
+    vol_list = []
+    ticker_list = []
+    dates = []
+
+    print("Generating Latent Space for all tickers...")
+
+    for ticker in tickers:
+        if ticker not in merged_data['Ticker'].values:
+            continue
+
+        df = merged_data[merged_data['Ticker'] == ticker].sort_index()
+
+        # Stride for visualization speed (keep low for trajectory accuracy)
+        stride = 1
+
+        # Pre-calculate Volume Feature
+        vol_feature = np.log(df['Volume'] + 1) / 20.0
+
+        for i in range(30, len(df), stride):
+            window = df.iloc[i-30:i]
+            window_vol = vol_feature.iloc[i-30:i]
+
+            # Construct 6-channel input
+            features = np.stack([
+                window['LogReturn'].values,
+                window['RealizedVol'].values,
+                window['VIX'].values,
+                window_vol.values,
+                window['TNX'].values,
+                window['Buffett_Ind'].values
+            ], axis=1)
+
+            x = features.reshape(1, 30, 6)
+            x_tensor = torch.tensor(x, dtype=torch.float32).to(device)
+
+            with torch.no_grad():
+                _, z = model(x_tensor)
+
+            z_list.append(z.cpu().numpy().flatten())
+            vol_list.append(df.iloc[i]['RealizedVol'])
+            ticker_list.append(ticker)
+            dates.append(df.index[i])
+
+    z_arr = np.array(z_list)
+    vol_arr = np.array(vol_list)
+    ticker_arr = np.array(ticker_list)
+    dates = np.array(dates)
+
+    os.makedirs('plots', exist_ok=True)
+
+    # --- Standard Visualizations ---
+
+    # 1. Latent Space 3D Scatter (Colored by Volatility)
+    print("Plotting Latent Space Topology (Vol)...")
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    sc = ax.scatter(z_arr[:,0], z_arr[:,1], z_arr[:,2], c=vol_arr, cmap='RdBu_r', alpha=0.6, s=2)
+    plt.colorbar(sc, label='Realized Volatility')
+    ax.set_title("Latent Space Topology (All Indices - Volatility)")
+    ax.set_xlabel('Latent Dim 1')
+    ax.set_ylabel('Latent Dim 2')
+    ax.set_zlabel('Latent Dim 3')
+    plt.savefig('plots/latent_space_3d.png', dpi=300)
+    plt.close()
+
+    # 2. Latent Space 3D Scatter (Colored by Ticker)
+    print("Plotting Latent Space Topology (Ticker)...")
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+
+    colors = {'^GSPC': 'blue', '^NDX': 'orange', '^RUT': 'green', '^DJI': 'red'}
+
+    for ticker in tickers:
+        mask = ticker_arr == ticker
+        if mask.sum() > 0:
+            # Downsample for ticker plot to avoid clutter
+            ax.scatter(z_arr[mask][::5,0], z_arr[mask][::5,1], z_arr[mask][::5,2],
+                       c=colors.get(ticker, 'black'), label=ticker, alpha=0.5, s=2)
+
+    ax.set_title("Latent Space Topology (Colored by Ticker)")
+    ax.set_xlabel('Latent Dim 1')
+    ax.set_ylabel('Latent Dim 2')
+    ax.set_zlabel('Latent Dim 3')
+    ax.legend()
+    plt.savefig('plots/latent_space_by_ticker.png', dpi=300)
+    plt.close()
+
     # --- Advanced Visualizations ---
 
-    # 3. PCA Projection (2D)
+    # 3. Crisis Trajectories
+    visualize_trajectories(z_arr, dates, ticker_arr, vol_arr)
+
+    # 4. K-Means Clusters
+    visualize_clusters(z_arr, n_clusters=3)
+
+    # 5. Velocity Field
+    visualize_velocity_field(z_arr, vol_arr)
+
+    # 6. PCA Projection (2D)
     print("Generating PCA Projection...")
     pca = PCA(n_components=2)
     z_pca = pca.fit_transform(z_arr)
 
     plt.figure(figsize=(10, 8))
-    sc = plt.scatter(z_pca[:,0], z_pca[:,1], c=vol_arr, cmap='RdBu_r', alpha=0.6, s=10)
+    sc = plt.scatter(z_pca[:,0], z_pca[:,1], c=vol_arr, cmap='RdBu_r', alpha=0.6, s=2)
     plt.colorbar(sc, label='Realized Volatility')
     plt.title(f'PCA Projection of Latent Space (Explained Var: {pca.explained_variance_ratio_.sum():.2f})')
     plt.xlabel('PC 1')
@@ -132,39 +379,7 @@ def visualize_latent_space():
     plt.savefig('plots/pca_projection.png', dpi=300)
     plt.close()
 
-    # 4. t-SNE Projection (2D)
-    print("Generating t-SNE Projection (this may take a moment)...")
-    # Subsample for t-SNE speed if needed, but ~4000 points is fine
-    tsne = TSNE(n_components=2, random_state=42, perplexity=30)
-    z_tsne = tsne.fit_transform(z_arr)
-
-    plt.figure(figsize=(10, 8))
-    sc = plt.scatter(z_tsne[:,0], z_tsne[:,1], c=vol_arr, cmap='RdBu_r', alpha=0.6, s=10)
-    plt.colorbar(sc, label='Realized Volatility')
-    plt.title('t-SNE Manifold Projection')
-    plt.xlabel('t-SNE 1')
-    plt.ylabel('t-SNE 2')
-    plt.savefig('plots/tsne_projection.png', dpi=300)
-    plt.close()
-
-    # 5. Parallel Coordinates Plot
-    print("Generating Parallel Coordinates Plot...")
-    # Create a DataFrame for plotting
-    # Normalize Z for better visualization if ranges differ wildly (though they shouldn't)
-    z_df = pd.DataFrame(z_arr, columns=[f'Z{i+1}' for i in range(z_arr.shape[1])])
-    z_df['Volatility'] = vol_arr
-    # Bin volatility for coloring lines
-    z_df['Regime'] = pd.qcut(z_df['Volatility'], q=4, labels=['Low', 'Medium', 'High', 'Extreme'])
-
-    plt.figure(figsize=(12, 6))
-    pd.plotting.parallel_coordinates(z_df.sample(500), 'Regime', colormap='viridis', alpha=0.5)
-    plt.title('Parallel Coordinates of Latent Dimensions by Volatility Regime')
-    plt.xlabel('Latent Dimension')
-    plt.ylabel('Value')
-    plt.savefig('plots/parallel_coordinates.png', dpi=300)
-    plt.close()
-
-    # 6. Correlation Heatmap
+    # 7. Correlation Heatmap
     print("Generating Correlation Heatmap...")
 
     corr_df = pd.DataFrame(z_arr, columns=[f'Latent_{i+1}' for i in range(z_arr.shape[1])])

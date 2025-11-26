@@ -7,10 +7,11 @@ import os
 from src.models import NeuralOperator
 from src.data_loader import MarketData, MacroData
 from src.strategies.benchmark import BenchmarkStrategy
-from src.strategies.regime import RegimeStrategy
-from src.strategies.momentum import MomentumStrategy
-from src.strategies.mean_reversion import MeanReversionStrategy
-from src.strategies.skew import SkewStrategy
+from src.strategies.neural_surfer import NeuralSurferStrategy
+from src.strategies.skew import NeuralSkewStrategy
+from src.strategies.neural_arbitrage import NeuralArbitrageStrategy
+from src.strategies.neural_velocity import NeuralVelocityStrategy
+from src.strategies.neural_projection import NeuralProjectionStrategy
 
 def run_backtest_period(model, merged_data, tickers, start_date, end_date, title_suffix, filename):
     device = next(model.parameters()).device
@@ -72,7 +73,6 @@ def run_backtest_period(model, merged_data, tickers, start_date, end_date, title
                 y_pred, z = model(x_tensor)
                 z_np = z.cpu().numpy().flatten()
                 prices_np = y_pred.cpu().numpy().flatten()
-
             z_history.append(z_np)
             price_history.append(prices_np)
             dates.append(df.index[i])
@@ -85,17 +85,18 @@ def run_backtest_period(model, merged_data, tickers, start_date, end_date, title
         # 4. Run Strategies
         strategies = [
             BenchmarkStrategy(ticker=ticker),
-            RegimeStrategy(threshold_percentile=80),
-            MomentumStrategy(lookback=5),
-            MeanReversionStrategy(z_score_threshold=2.0),
-            SkewStrategy(skew_threshold=0.05)
+            NeuralSurferStrategy(velocity_threshold_percentile=80),
+            NeuralSkewStrategy(),
+            NeuralArbitrageStrategy(),
+            NeuralProjectionStrategy(aggressive=False), # Naive Pricing
+            NeuralVelocityStrategy(aggressive=True)     # Latent Flow (Shorting)
         ]
 
         results = {}
 
         for strat in strategies:
-            # Pass decoded prices to strategies (SkewStrategy needs it)
-            signals = strat.generate_signals(z_history, prices=price_history)
+            # Pass decoded prices AND model to strategies (VelocityStrategy needs model)
+            signals = strat.generate_signals(z_history, prices=price_history, model=model)
             strat_returns = signals.shift(1).fillna(0).values * returns
             cum_ret = np.cumprod(1 + strat_returns) - 1
 
@@ -149,14 +150,14 @@ def run_backtest():
     merged_data = market.join(macro, how='left').ffill().dropna()
 
     # 3. Run Backtests
-    # Train Period (In-Sample): 2006-01-01 to 2023-01-01
-    run_backtest_period(model, merged_data, tickers, '2006-01-01', '2023-01-01', "Train Set (In-Sample)", "strategy_performance_train_enriched.png")
+    # Train Period (In-Sample): 2010-01-01 to 2022-12-31
+    run_backtest_period(model, merged_data, tickers, '2010-01-01', '2022-12-31', "Train Set (In-Sample)", "strategy_performance_train_enriched.png")
 
-    # Crisis Period (Zoom In): 2006-01-01 to 2011-01-01
-    run_backtest_period(model, merged_data, tickers, '2006-01-01', '2011-01-01', "Crisis Period (2008)", "strategy_performance_crisis_enriched.png")
+    # Test Set 1: Crisis Period (Out-of-Sample) 2006-01-01 to 2009-12-31
+    run_backtest_period(model, merged_data, tickers, '2006-01-01', '2009-12-31', "Test Set 1 (Crisis)", "strategy_performance_crisis_enriched.png")
 
-    # Test Period (Out-of-Sample): 2023-01-01 to Present
-    run_backtest_period(model, merged_data, tickers, '2023-01-01', '2025-12-31', "Test Set (Out-of-Sample)", "strategy_performance_test_enriched.png")
+    # Test Set 2: Recent Period (Out-of-Sample) 2023-01-01 to Present
+    run_backtest_period(model, merged_data, tickers, '2023-01-01', '2025-12-31', "Test Set 2 (Recent)", "strategy_performance_test_enriched.png")
 
 if __name__ == "__main__":
     run_backtest()

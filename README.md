@@ -247,12 +247,90 @@ We treat this as an **Inverse Problem / Operator Learning** task. The network ac
 ### Test 3: Temporal Trajectory Analysis
 **Hypothesis:** The market moves continuously along the manifold.
 *   **Procedure:** Plot the trajectory of $z_t, z_{t+1}, z_{t+2}...$ for the month of March 2020 (COVID Crash).
+---
+
+## 4. Phase II: Model Architecture (The Neural Operator)
+We treat this as an **Inverse Problem / Operator Learning** task. The network acts as an Autoencoder.
+
+### Component A: The Encoder (Market State $\to$ Manifold)
+*   **Input:** Time series of market state (Shape: `[Batch, 30, 2]` - 30 days, Return & Vol).
+*   **Architecture:**
+    *   1D Convolutional Layers (to capture temporal dependencies/path roughness).
+    *   OR: LSTM/GRU layer.
+*   **Bottleneck (The Latent Space $Z$):**
+    *   Dense layer mapping to dimension $d=3$ or $d=4$.
+    *   *Activation:* Linear (allows the manifold to stretch infinitely) or Tanh.
+    *   **Constraint:** Apply a variational penalty (VAE) OR simply an L2 sparsity penalty to force efficient representation.
+
+### Component B: The Decoder (Manifold $\to$ Price Surface)
+*   **Input:** Latent vector $z$ (Shape: `[Batch, d]`).
+*   **Architecture:** Multi-Layer Perceptron (MLP).
+*   **Output:** Option Surface (Shape: `[Batch, 21]`).
+*   **Physics-Informed Constraint (Optional but Recommended):**
+    *   Add a "Call Spread" penalty in the loss function: $Price(K_1) \ge Price(K_2)$ for $K_1 < K_2$. This forces the network to respect no-arbitrage rules.
+
+---
+
+## 5. Phase III: Training Protocol
+*   **Split:**
+    *   **Train:** 2010 – 2022.
+    *   **Validation:** 2023.
+    *   **Test:** 2024 – Present (Out of Time sample).
+*   **Loss Function:** Mean Squared Error (MSE) on price + Penalty for arbitrage violations.
+*   **Optimizer:** AdamW with Cosine Annealing scheduler.
+*   **Early Stopping:** Monitor Validation Loss.
+
+---
+
+## 6. Phase IV: Analysis & Tests for Structure
+*This is the core scientific contribution. We prove the Latent Space is meaningful.*
+
+### Test 1: Topological Clustering (Regime Identification)
+**Hypothesis:** Distinct market behaviors map to distinct regions in $Z$.
+*   **Procedure:**
+    1.  Feed all Test Data through the Encoder to get $Z_{test}$.
+    2.  Color-code points by "Market State" (e.g., Red = High Volatility/Crash, Blue = Low Volatility).
+    3.  **Metric:** Calculate the *Silhouette Score* of these clusters in Latent Space.
+    4.  **Visual:** Plot 3D scatter of $Z$. Do the "Crisis" points form a separate island or a long tail?
+
+### Test 2: Manifold Interpolation (The "Physics" Check)
+**Hypothesis:** Linear movement in Latent Space represents a realistic evolution of market physics, whereas linear interpolation in Data Space does not.
+*   **Procedure:**
+    1.  Pick Point A (Calm Day) and Point B (Crisis Day).
+    2.  **Path 1 (Latent):** Draw a line between $z_A$ and $z_B$. Decode points along the line into surfaces.
+    3.  **Path 2 (Naive):** Average the prices of Day A and Day B directly.
+    4.  **Check:** Compute the implied volatility surface for the interpolated points.
+    5.  **Pass Criteria:** Path 1 yields smooth, smile-shaped volatility curves. Path 2 yields jagged or arbitrage-violating curves.
+
+### Test 3: Temporal Trajectory Analysis
+**Hypothesis:** The market moves continuously along the manifold.
+*   **Procedure:** Plot the trajectory of $z_t, z_{t+1}, z_{t+2}...$ for the month of March 2020 (COVID Crash).
 *   **Visual:** Does the trajectory look like a random walk (Brownian motion), or does it "jump" to a new attractor basin?
 *   **Insight:** If it jumps, the Neural SPDE has identified a "Phase Transition" in the market.
 
 ---
 
-## 7. Implementation Roadmap (Checklist)
+## 7. Neural Trading Strategies
+We implement three strategies that explicitly utilize the **Neural Operator's high-dimensional output**:
+
+### 1. Neural Surfer (Latent Dynamics)
+*   **Concept:** The latent space $Z$ represents the compressed state of the market. We measure the **Latent Velocity** ($||dZ/dt||$) to detect regime shifts.
+*   **Logic:** High velocity implies the market is traversing the manifold rapidly (instability). The strategy goes **Defensive (Cash)** when velocity exceeds the 80th percentile of the past year.
+
+### 2. Neural Skew (Surface Structure)
+*   **Concept:** The model predicts the *fair* option price surface for the current market state. We analyze the **Implied Skew** of this predicted surface.
+*   **Logic:** A steep skew (OTM Puts > OTM Calls) indicates the model "fears" a crash based on the learned physics. The strategy goes **Defensive** when predicted skew is high, effectively using the model's "pre-cognition" of risk.
+
+### 3. Neural Arbitrage (BSM Divergence)
+*   **Concept:** This strategy directly exploits the **Pricing Power** of the Neural Operator. We calculate the "Neural Premium" ($P_{Neural} - P_{BSM}$) for ATM Puts.
+*   **Logic:**
+    *   If $P_{Neural} \gg P_{BSM}$: The Neural Model (Physics-Informed) detects higher risk than the standard Black-Scholes model. The market is likely underpricing risk. **Signal: Defensive**.
+    *   If $P_{Neural} \approx P_{BSM}$: The market is behaving normally. **Signal: Long**.
+*   **Why it works:** The Neural Operator solves the underlying SPDE (Heston dynamics) which captures fat tails and volatility clustering that BSM misses. This strategy arbitrages the difference between "True Physics" and "Simplified Model".
+
+---
+
+## 8. Implementation Roadmap (Checklist)
 
 - [ ] **Week 1: Data Pipeline**
     - [ ] Implement `yfinance` scraper.
@@ -276,7 +354,7 @@ We treat this as an **Inverse Problem / Operator Learning** task. The network ac
 
 ---
 
-## 8. Project Structure
+## 9. Project Structure
 ```text
 project_root/
 |
@@ -305,7 +383,7 @@ project_root/
 +-- requirements.txt              # Dependencies
 ```
 
-## 9. Usage
+## 10. Usage
 
 ### Installation
 ```bash

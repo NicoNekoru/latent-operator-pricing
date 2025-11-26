@@ -117,33 +117,33 @@ Partial differential equations (PDEs) capture relations among multiple continuou
 \[
     dS_t = rS_t \,dt + \sigma S_t \,dW_t
 \]
-leads--via the risk‐neutral expectation--to the deterministic PDE \citep{nayak2025mathematicalmodelingoptionpricing}
+leads--via the risk-neutral expectation--to the deterministic PDE \citep{nayak2025mathematicalmodelingoptionpricing}
 \[
     \partial_t V + \frac12\sigma^2 s^2 \partial_{ss}V + r s\partial_sV - rV = 0,\quad V(T,s)=g(s).
 \]
 This PDE formulation enables efficient computation of prices and sensitivities.  
 
 \subsection{From SDEs to SPDEs}
-To accommodate richer dynamics--such as spatially distributed noise, stochastic volatilities, or regime fluctuations--we move from SDEs/PDEs to stochastic‐partial‐differential‐equations (SPDEs) of the form
+To accommodate richer dynamics--such as spatially distributed noise, stochastic volatilities, or regime fluctuations--we move from SDEs/PDEs to stochastic-partial-differential-equations (SPDEs) of the form
 \[
     dU(t,x)=\mathcal LU dt + \mathcal G(U) dW_t(x),
 \]
-where \(\mathcal L\) is a spatial/temporal differential operator and \(W_t(x)\) is a noise process indexed by space and time. SPDEs embed randomness directly into fields rather than trajectories, enabling modeling of spatio‐temporal uncertainty and parameter fluctuations. However, classical discretisation of SPDEs is challenging: time-space grids must resolve noise, leading to high cost and potential instability.
+where \(\mathcal L\) is a spatial/temporal differential operator and \(W_t(x)\) is a noise process indexed by space and time. SPDEs embed randomness directly into fields rather than trajectories, enabling modeling of spatio-temporal uncertainty and parameter fluctuations. However, classical discretisation of SPDEs is challenging: time-space grids must resolve noise, leading to high cost and potential instability.
 
 \subsection{Current Solving Methods}
-Finding the analytical solutions to PDEs is often infeasible or immensely complex. Thus, we rely on classical numerical solvers -- finite‐difference methods particularly -- which approximate the continuous system via discrete time and space grids. Immediately, they are limited by grid‐dependency and discretisation artifacts (numerical diffusion, dispersion, stability), and typically solve for single‐instance solutions rather than families/parameterised solutions. These issues become more acute when extending to stochastic or high‐dimensional problems.
+Finding the analytical solutions to PDEs is often infeasible or immensely complex. Thus, we rely on classical numerical solvers -- finite-difference methods particularly -- which approximate the continuous system via discrete time and space grids. Immediately, they are limited by grid-dependency and discretisation artifacts (numerical diffusion, dispersion, stability), and typically solve for single-instance solutions rather than families/parameterised solutions. These issues become more acute when extending to stochastic or high-dimensional problems.
 
 \subsection{Neural Operator Methods}
-Neural‐based solvers offer an alternative: mesh‐free, continuous‐domain methods that learn the operators which map inputs (coefficients, forcing, boundaries) to solutions \citep{shen2025neuralsdesunifiedapproach}.
+Neural-based solvers offer an alternative: mesh-free, continuous-domain methods that learn the operators which map inputs (coefficients, forcing, boundaries) to solutions \citep{shen2025neuralsdesunifiedapproach}.
 
 For deterministic PDEs, we can train a neural network \(u_\theta(t,x)\) to minimise the PDE residual via automatic differentiation. For SPDEs, neural architectures can incorporate random inputs (noise realisations or latent variables) or learn the operator \citep{salvi2022neuralstochasticpdesresolutioninvariant}
 \[
     \mathcal G_\theta: (\text{initial/boundary data}, \text{noise}) \mapsto U(t,x).
 \]
-These methods offer parameterised families of solutions and avoid some discretisation burdens of finite‐difference schemes.
+These methods offer parameterised families of solutions and avoid some discretisation burdens of finite-difference schemes.
 
 \section{Research Question}
-By combining SPDE modelling with neural operator solvers, we seek to build a continuous‐time, high‐flexibility pricing framework for options that incorporates stochastic parameter fields, non‐stationary volatility regimes, and multiple asset factors.
+By combining SPDE modelling with neural operator solvers, we seek to build a continuous-time, high-flexibility pricing framework for options that incorporates stochastic parameter fields, non-stationary volatility regimes, and multiple asset factors.
 
 \section{Datasets}
 To develop the model, we will be using historical options pricing for the SPX and QQQ indices from 2012-2022, and we will test the models performance on pricing from 2023-2025. Data will be taken from the Yahoo Finance API using the \texttt{yfinance} library \citep{aroussi_nodate_yfinance}.

@@ -1,7 +1,7 @@
 import argparse
 import os
 
-from src.data_loader import generate_dataset
+from src.data_loader import DatasetBuilder
 
 def main():
     parser = argparse.ArgumentParser(description="Generate Option Pricing Dataset from Market Data")
@@ -13,7 +13,7 @@ def main():
     args = parser.parse_args()
 
     print(f"Generating dataset for tickers: {args.tickers}")
-    generate_dataset(tickers=args.tickers, output_path=args.output)
+    DatasetBuilder(output_path=args.output).build()
 
 if __name__ == "__main__":
     main()

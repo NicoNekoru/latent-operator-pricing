@@ -13,7 +13,8 @@ src/utils.py
 src/strategies/__init__.py
 src/strategies/base.py
 src/strategies/benchmark.py
-src/strategies/mean_reversion.py
-src/strategies/momentum.py
-src/strategies/regime.py
+src/strategies/neural_arbitrage.py
+src/strategies/neural_projection.py
+src/strategies/neural_surfer.py
+src/strategies/neural_velocity.py
 src/strategies/skew.py

@@ -10,8 +10,7 @@ from src.strategies.benchmark import BenchmarkStrategy
 from src.strategies.neural_surfer import NeuralSurferStrategy
 from src.strategies.skew import NeuralSkewStrategy
 from src.strategies.neural_arbitrage import NeuralArbitrageStrategy
-from src.strategies.neural_velocity import NeuralVelocityStrategy
-from src.strategies.neural_projection import NeuralProjectionStrategy
+from src.strategies.bsm_baseline import BSMVolStrategy
 
 def run_backtest_period(model, merged_data, tickers, start_date, end_date, title_suffix, filename):
     device = next(model.parameters()).device
@@ -85,18 +84,18 @@ def run_backtest_period(model, merged_data, tickers, start_date, end_date, title
         # 4. Run Strategies
         strategies = [
             BenchmarkStrategy(ticker=ticker),
+            BSMVolStrategy(threshold_percentile=80), # Parametric Baseline
             NeuralSurferStrategy(velocity_threshold_percentile=80),
             NeuralSkewStrategy(),
-            NeuralArbitrageStrategy(),
-            NeuralProjectionStrategy(aggressive=False), # Naive Pricing
-            NeuralVelocityStrategy(aggressive=True)     # Latent Flow (Shorting)
+            NeuralArbitrageStrategy()
         ]
 
         results = {}
 
         for strat in strategies:
             # Pass decoded prices AND model to strategies (VelocityStrategy needs model)
-            signals = strat.generate_signals(z_history, prices=price_history, model=model)
+            # Pass market_data (df) for BSM Baseline
+            signals = strat.generate_signals(z_history, prices=price_history, model=model, market_data=df)
             strat_returns = signals.shift(1).fillna(0).values * returns
             cum_ret = np.cumprod(1 + strat_returns) - 1
 

@@ -184,11 +184,7 @@ class DatasetBuilder:
                 window = df.iloc[i-30:i]
 
                 # Features: [LogReturn, Vol, VIX, Volume, TNX, Buffett]
-                # Note: Volume needs normalization. Let's use Log Volume relative to mean?
-                # For simplicity in this POC, we'll use raw Log Volume.
-                # Actually, let's use Volume Change or just normalized Volume.
-                # Let's use Log(Volume) / 20 (rough scale).
-
+                # Volume is log-normalized: Log(Volume + 1) / 20.0
                 vol_feature = np.log(window['Volume'] + 1) / 20.0
 
                 # Stack Features

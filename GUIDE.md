@@ -80,4 +80,4 @@ python scripts/backtest.py
 ## 6. Extending the Project
 
 *   **New Strategies:** Add a new class in `src/strategies/` inheriting from `BaseStrategy`.
-*   **New Features:** Update `MacroData` in `src/data_loader.py` to fetch new indicators, and update `NeuralOperator` input dimension in `src/models.py`.
+*   **New Features:** Update `MacroData` in `src/data_loader.py` to fetch new indicators, and update `ManifoldAutoencoder` input dimension in `src/models.py`.

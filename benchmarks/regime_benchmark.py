@@ -8,7 +8,7 @@ from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 import os
 
-from src.models import NeuralOperator
+from src.models import ManifoldAutoencoder
 
 def load_data(path='data/processed_dataset.parquet'):
     print(f"Loading data from {path}...")
@@ -26,7 +26,7 @@ def load_data(path='data/processed_dataset.parquet'):
 
 def load_model(path='models/neural_operator.pth', input_dim=6, latent_dim=3):
     print(f"Loading model from {path}...")
-    model = NeuralOperator(input_dim=input_dim, latent_dim=latent_dim)
+    model = ManifoldAutoencoder(input_dim=input_dim, latent_dim=latent_dim)
 
     if os.path.exists(path):
         model.load_state_dict(torch.load(path, map_location=torch.device('cpu')))

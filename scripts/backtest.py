@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
-from src.models import NeuralOperator
+from src.models import DeepONet, get_standard_grid
 from src.data_loader import MarketData, MacroData
 from src.strategies.benchmark import BenchmarkStrategy
 from src.strategies.neural_surfer import NeuralSurferStrategy
@@ -14,6 +14,7 @@ from src.strategies.bsm_baseline import BSMVolStrategy
 
 def run_backtest_period(model, merged_data, tickers, start_date, end_date, title_suffix, filename):
     device = next(model.parameters()).device
+    base_grid = get_standard_grid(device)
     fig, axes = plt.subplots(2, 2, figsize=(15, 12))
     axes = axes.flatten()
 
@@ -69,7 +70,7 @@ def run_backtest_period(model, merged_data, tickers, start_date, end_date, title
 
             with torch.no_grad():
                 # Get both Z and the decoded Prices
-                y_pred, z = model(x_tensor)
+                y_pred, z = model(x_tensor, base_grid.expand(1, -1, -1))
                 z_np = z.cpu().numpy().flatten()
                 prices_np = y_pred.cpu().numpy().flatten()
             z_history.append(z_np)
@@ -99,8 +100,10 @@ def run_backtest_period(model, merged_data, tickers, start_date, end_date, title
             strat_returns = signals.shift(1).fillna(0).values * returns
             cum_ret = np.cumprod(1 + strat_returns) - 1
 
-            total_ret = cum_ret[-1]
-            sharpe = np.mean(strat_returns) / (np.std(strat_returns) + 1e-9) * np.sqrt(252)
+            if len(cum_ret) > 0:
+                sharpe = np.mean(strat_returns) / (np.std(strat_returns) + 1e-9) * np.sqrt(252)
+            else:
+                sharpe = 0.0
 
             results[strat.name] = {'cum_ret': cum_ret, 'sharpe': sharpe}
 
@@ -128,10 +131,9 @@ def run_backtest():
     print(f"Using device: {device}")
 
     # 1. Load Model
-    # Note: Input dim is now 6
-    model = NeuralOperator(input_dim=6, latent_dim=3).to(device)
+    model = DeepONet(input_channels=6, latent_dim=16).to(device)
     try:
-        model.load_state_dict(torch.load('models/neural_operator.pth', map_location=device))
+        model.load_state_dict(torch.load('models/deeponet.pth', map_location=device))
     except FileNotFoundError:
         print("Model not found. Please train first.")
         return

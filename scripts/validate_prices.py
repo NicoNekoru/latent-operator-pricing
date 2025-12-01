@@ -1,3 +1,14 @@
+import yfinance as yf
+import pandas as pd
+import numpy as np
+from src.data_loader import HestonGenerator
+import matplotlib.pyplot as plt
+
+def validate_prices():
+    print("Fetching SPY data...")
+    spy = yf.Ticker("SPY")
+
+    # Get current spot price
     history = spy.history(period="1mo")
     current_spot = history['Close'].iloc[-1]
     print(f"Current SPY Spot: {current_spot:.2f}")
@@ -40,7 +51,7 @@
     sigma = 0.3
     rho = -0.7
 
-    sim = HestonSimulator()
+    sim = HestonGenerator()
 
     # Calculate Heston prices for these strikes
     heston_prices = []

@@ -2,7 +2,7 @@ import torch
 from torch.utils.data import DataLoader
 import os
 
-from src.models import NeuralOperator
+from src.models import DeepONet, get_standard_grid
 from src.dataset import OptionDataset
 from src.utils import calculate_metrics
 
@@ -18,9 +18,10 @@ def evaluate():
     print(f"Test Set Size: {len(test_dataset)} samples")
 
     # Load Model
-    model = NeuralOperator(latent_dim=3).to(device)
+    model = DeepONet(latent_dim=16).to(device)
+    base_grid = get_standard_grid(device)
     try:
-        model.load_state_dict(torch.load('models/neural_operator.pth', map_location=device))
+        model.load_state_dict(torch.load('models/deeponet.pth', map_location=device))
     except FileNotFoundError:
         print("Model not found. Please train first.")
         return
@@ -33,7 +34,10 @@ def evaluate():
     with torch.no_grad():
         for x, y in test_loader:
             x, y = x.to(device), y.to(device)
-            y_pred, _ = model(x)
+
+            current_batch_size = x.size(0)
+            grid = base_grid.expand(current_batch_size, -1, -1)
+            y_pred, _ = model(x, grid)
 
             mape, dollar = calculate_metrics(y_pred, y)
 

@@ -9,7 +9,7 @@ from sklearn.cluster import KMeans
 from matplotlib.colors import ListedColormap
 import os
 
-from src.models import NeuralOperator
+from src.models import DeepONet, get_standard_grid
 from src.data_loader import MarketData, MacroData, HestonGenerator
 
 def visualize_trajectories(z_arr, dates, ticker_arr, vol_arr):
@@ -107,7 +107,7 @@ def visualize_latent_space():
     Generates Latent Space visualizations using Matplotlib.
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = NeuralOperator(input_dim=6, latent_dim=3).to(device)
+    model = ManifoldAutoencoder(input_dim=6, latent_dim=3).to(device)
     try:
         model.load_state_dict(torch.load('models/neural_operator.pth', map_location=device))
     except FileNotFoundError:
@@ -253,9 +253,10 @@ def visualize_latent_space():
     Generates Latent Space visualizations using Matplotlib.
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = NeuralOperator(input_dim=6, latent_dim=3).to(device)
+    model = DeepONet(input_channels=6, latent_dim=16).to(device)
+    base_grid = get_standard_grid(device)
     try:
-        model.load_state_dict(torch.load('models/neural_operator.pth', map_location=device))
+        model.load_state_dict(torch.load('models/deeponet.pth', map_location=device))
     except FileNotFoundError:
         print("Model not found. Train first.")
         return
@@ -305,7 +306,7 @@ def visualize_latent_space():
             x_tensor = torch.tensor(x, dtype=torch.float32).to(device)
 
             with torch.no_grad():
-                _, z = model(x_tensor)
+                _, z = model(x_tensor, base_grid.expand(1, -1, -1))
 
             z_list.append(z.cpu().numpy().flatten())
             vol_list.append(df.iloc[i]['RealizedVol'])
@@ -397,16 +398,171 @@ def visualize_latent_space():
     plt.savefig('plots/latent_correlation.png', dpi=300)
     plt.close()
 
+    # 8. Error Heatmap
+    visualize_error_heatmap(model, device)
+
+    # 9. Velocity vs Drawdown
+    visualize_velocity_drawdown(z_arr, dates, ticker_arr)
+
     print("Advanced visualizations saved.")
+
+def visualize_error_heatmap(model, device):
+    """
+    Plots Mean Absolute Error (MAE) as a 2D heatmap (Moneyness vs. Maturity).
+    """
+    print("Generating Error Heatmap...")
+    # Generate a synthetic test set covering the grid
+    # Moneyness: 0.8 to 1.2 (7 points)
+    # Maturity: 0.1, 0.5, 1.0 (3 points) - indices 0, 1, 2
+
+    # We need to simulate many Heston surfaces and compare Model(Encoder(Surface)) vs Surface?
+    # No, Model(Encoder(History)) vs Surface.
+    # We can use the validation set logic.
+
+    # For simplicity, we'll use the "HestonGenerator" to generate random valid surfaces
+    # and feed them into the Decoder directly?
+    # No, the model is History -> Price.
+
+    # We will use the 'compare_indices' logic but aggregate errors by (Maturity, Strike).
+
+    tickers = ['^GSPC']
+    market = MarketData(tickers=tickers, start_date='2010-01-01').fetch()
+    macro = MacroData(start_date='2010-01-01').fetch()
+    merged_data = market.join(macro, how='left').ffill().dropna()
+
+    base_grid = get_standard_grid(device)
+    simulator = HestonGenerator()
+
+    # Accumulate errors per grid point (21 points)
+    total_mae = np.zeros(21)
+    count = 0
+
+    df = merged_data[merged_data['Ticker'] == '^GSPC']
+    vol_feature = np.log(df['Volume'] + 1) / 20.0
+
+    # Sample random points to save time
+    indices = np.random.choice(range(30, len(df)), size=500, replace=False)
+
+    for i in indices:
+        row = df.iloc[i]
+        spot = row['Close']
+        realized_vol = row['RealizedVol']
+
+        # Ground Truth
+        v0 = realized_vol ** 2
+        simulator.setup_engine(spot, v0, 2.0, v0, 0.3, -0.7)
+        surface = simulator.generate(spot)
+
+        # Predict
+        window = df.iloc[i-30:i]
+        window_vol = vol_feature.iloc[i-30:i]
+
+        features = np.stack([
+            window['LogReturn'].values,
+            window['RealizedVol'].values,
+            window['VIX'].values,
+            window_vol.values,
+            window['TNX'].values,
+            window['Buffett_Ind'].values
+        ], axis=1)
+
+        x = features.reshape(1, 30, 6)
+        x_tensor = torch.tensor(x, dtype=torch.float32).to(device)
+
+        with torch.no_grad():
+            y_pred, _ = model(x_tensor, base_grid.expand(1, -1, -1))
+            y_pred = y_pred.cpu().numpy().flatten()
+
+        total_mae += np.abs(y_pred - surface)
+        count += 1
+
+    avg_mae = total_mae / count
+    avg_mae_grid = avg_mae.reshape(3, 7)
+
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(avg_mae_grid, annot=True, fmt=".4f", cmap='Reds',
+                xticklabels=['0.8', '0.9', '0.95', '1.0', '1.05', '1.1', '1.2'],
+                yticklabels=['1M', '3M', '6M'])
+    plt.title("Reconstruction Error Heatmap (MAE)")
+    plt.xlabel("Moneyness (K/S)")
+    plt.ylabel("Maturity")
+    plt.tight_layout()
+    plt.savefig('plots/error_heatmap.png', dpi=300)
+    plt.close()
+
+def visualize_velocity_drawdown(z_arr, dates, ticker_arr):
+    """
+    Scatter plot of Latent Velocity vs. Next 5-Day Return.
+    """
+    print("Generating Velocity vs Drawdown Scatter...")
+
+    # Filter for GSPC
+    mask = ticker_arr == '^GSPC'
+    z_gspc = z_arr[mask]
+    dates_gspc = pd.to_datetime(dates[mask])
+
+    # Calculate Velocity
+    dz = np.diff(z_gspc, axis=0)
+    velocity = np.linalg.norm(dz, axis=1)
+
+    # Calculate Future Returns (5-day)
+    # We need the original price data.
+    # We can approximate using the dates if we re-fetch, but we have dates.
+    # Let's fetch just GSPC prices to align.
+
+    market = MarketData(tickers=['^GSPC'], start_date='2006-01-01').fetch()
+    prices = market[market['Ticker'] == '^GSPC']['Close']
+
+    # Align dates
+    # velocity[i] corresponds to transition from date[i] to date[i+1]
+    # We want to compare velocity at t with return from t to t+5.
+
+    future_returns = []
+    aligned_velocity = []
+
+    for i in range(len(dates_gspc)-6):
+        date = dates_gspc[i]
+        if date in prices.index:
+            # Find price at t and t+5 (approx)
+            # Since dates_gspc might be strided, we look up in prices
+            try:
+                idx = prices.index.get_loc(date)
+                p_t = prices.iloc[idx]
+                p_t5 = prices.iloc[min(idx+5, len(prices)-1)]
+                ret = (p_t5 - p_t) / p_t
+
+                future_returns.append(ret)
+                aligned_velocity.append(velocity[i])
+            except KeyError:
+                continue
+
+    plt.figure(figsize=(8, 6))
+    plt.scatter(aligned_velocity, future_returns, alpha=0.3, s=10)
+    plt.axhline(0, color='black', linestyle='--', linewidth=0.8)
+    plt.title("Latent Velocity vs. Future 5-Day Return")
+    plt.xlabel("Latent Velocity $||v_t||$")
+    plt.ylabel("Next 5-Day Return")
+
+    # Add trend line
+    z = np.polyfit(aligned_velocity, future_returns, 1)
+    p = np.poly1d(z)
+    plt.plot(aligned_velocity, p(aligned_velocity), "r--", alpha=0.8)
+
+    plt.tight_layout()
+    plt.savefig('plots/velocity_drawdown.png', dpi=300)
+    plt.close()
+
+
 
 def compare_indices():
     """
     Generates comparison graph for GSPC vs NDX using Matplotlib.
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = NeuralOperator(input_dim=6, latent_dim=3).to(device)
+    model = DeepONet(input_channels=6, latent_dim=16).to(device)
+    base_grid = get_standard_grid(device)
     try:
-        model.load_state_dict(torch.load('models/neural_operator.pth', map_location=device))
+        model.load_state_dict(torch.load('models/deeponet.pth', map_location=device))
     except FileNotFoundError: return
     model.eval()
 
@@ -467,13 +623,14 @@ def compare_indices():
             x_tensor = torch.tensor(x, dtype=torch.float32).to(device)
 
             with torch.no_grad():
-                y_pred, _ = model(x_tensor)
+                y_pred, _ = model(x_tensor, base_grid.expand(1, -1, -1))
                 y_pred = y_pred.cpu().numpy().flatten()
 
             dates.append(row.name)
             true_prices.append(atm_true)
             pred_prices.append(y_pred[10]) # ATM 3-month
             maes.append(np.mean(np.abs(y_pred - surface)))
+
             # MRE: Mean Relative Error (avoid div by zero)
             mres.append(np.mean(np.abs((y_pred - surface) / (surface + 1e-9))))
 

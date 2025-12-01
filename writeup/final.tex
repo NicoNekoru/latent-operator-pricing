@@ -227,12 +227,12 @@ Figure \ref{fig:latent_space} reveals that the learned manifold organizes into a
     \item \textbf{Transient Excursions}: The red region (VIX \(> 30\)) does not form a cluster but rather extends outward in long, sparse trajectories. These represent \emph{transient} dynamics, where the system is ejected from the attractor by a shock. These states are governed by eigenfunctions with large growth rates or decay rates, corresponding to the rapid phase transitions observed during crises.
 \end{itemize}
 
-The topological distinction is thus between the \emph{recurrent} dynamics of the stable core and the \emph{transient} dynamics of the crisis tail.
+The topological distinction is thus between the \emph{recurrent} dynamics of the invariant attractor and the \emph{transient} dynamics of the excursion trajectories.
 
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.8\textwidth]{figures/latent_space_3d.png}
-    \caption{The learned latent manifold \(\mathcal{M}\) projected via PCA. Color indicates VIX level. Note the distinct topological separation between the dense ``Calm'' core (blue) and the sparse ``Crisis'' tails (red).}
+    \caption{The learned latent manifold \(\mathcal{M}\) projected via PCA. Color indicates VIX level. Note the distinct topological separation between the dense invariant attractor (blue) and the sparse transient excursions (red).}
     \label{fig:latent_space}
 \end{figure}
 
@@ -290,15 +290,29 @@ Furthermore, the superiority of the neural operator is most evident in the ``win
 This result confirms that the DeepONet has not just learned a volatility proxy, but the full non-linear pricing operator that correctly handles the skew, a critical requirement for accurate risk management in tail events.
 
 \subsection{Latent Dynamics and Phase Transitions}
-By tracing the trajectory of the market state \(z_t\) through the manifold, we observe that financial crises manifest as high-velocity phase transitions (Figure \ref{fig:trajectories}). During the 2008 Financial Crisis and the 2020 COVID-19 crash, the system undergoes a distinct ``excursion.'' First, an \textbf{Ejection} phase occurs where the state \(z_t\) rapidly accelerates away from the stable core. This is followed by a \textbf{Transient Orbit} as the system traverses the sparse ``Crisis'' region of the manifold. Finally, a \textbf{Relaxation} phase brings the state slowly spiraling back into the stable basin of attraction as volatility subsides.
+By tracing the trajectory of the market state \(z_t\) through the manifold, we observe that financial crises manifest as high-velocity phase transitions (Figure \ref{fig:trajectories}). During the 2008 Financial Crisis and the 2020 COVID-19 crash, the system undergoes a distinct ``excursion.'' First, an \textbf{Ejection} phase occurs where the state \(z_t\) rapidly accelerates away from the invariant attractor. This is followed by a \textbf{Transient Orbit} as the system traverses the sparse transient region of the manifold. Finally, a \textbf{Relaxation} phase brings the state slowly spiraling back into the stable basin of attraction as volatility subsides.
 
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.8\textwidth]{figures/crisis_trajectories.png}
-    \caption{Market trajectories through the latent manifold during the 2008 Financial Crisis and 2020 COVID Crash. The high-velocity ``ejection'' from the stable core is clearly visible.}
+    \caption{Market trajectories through the latent manifold during the 2008 Financial Crisis and 2020 COVID Crash. The high-velocity ``ejection'' from the invariant attractor is clearly visible.}
     \label{fig:trajectories}
 \end{figure}
 This dynamical behavior suggests that the magnitude of the velocity vector, \(\norm{\diff{Z}{t}}\), is a critical order parameter for detecting market instability. This analysis aligns with \textbf{Koopman Operator Theory}, where we seek a coordinate system where the nonlinear dynamics of the system become linear or at least simpler to analyze.
+
+\subsection{Manifold Geometry and Interpolation}
+To verify that the learned latent space \(\mathcal{Z}\) captures the continuous geometry of the solution operator rather than merely memorizing discrete training points, we perform a \textbf{Manifold Walk}. We linearly interpolate between the latent vector of a ``Calm'' regime (\(z_{\text{calm}}\)) and a ``Crisis'' regime (\(z_{\text{crisis}}\)):
+\[
+    z(\alpha) = (1-\alpha)z_{\text{calm}} + \alpha z_{\text{crisis}}, \quad \alpha \in [0, 1]
+\]
+We then decode each \(z(\alpha)\) into a price surface using the Trunk Net. Figure \ref{fig:manifold_walk} shows the resulting sequence of surfaces. The transition is smooth and topologically consistent, with the volatility smile progressively steepening and the overall price level rising. This smoothness confirms that the Neural Operator has learned a valid chart for the regime manifold, allowing for meaningful geodesic interpolation between distinct market states.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=1.0\textwidth]{figures/manifold_walk.png}
+    \caption{Manifold Walk: Linear interpolation in the latent space between a Calm regime (left) and a Crisis regime (right). The decoded surfaces evolve smoothly, demonstrating that the model has learned the continuous geometry of the pricing operator.}
+    \label{fig:manifold_walk}
+\end{figure}
 
 \begin{figure}[htbp]
     \centering
@@ -306,6 +320,32 @@ This dynamical behavior suggests that the magnitude of the velocity vector, \(\n
     \caption{Latent Velocity vs. Future 5-Day Return. High latent velocity (regime shifts) is strongly correlated with negative future returns, validating the ``Neural Surfer'' hypothesis.}
     \label{fig:velocity_drawdown}
 \end{figure}
+
+\section{Robustness and Stability Analysis}
+
+\subsection{Generalization to Rough Volatility}
+Recent literature suggests that market volatility exhibits ``rough'' behavior, characterized by a Hurst exponent \(H < 0.5\) \citep{rosenbaum2018rough}. To test the generalization capability of our model (trained on smooth Heston, \(H=0.5\)), we generated a synthetic test set of 500 samples with varying Hurst exponents \(H \in [0.05, 0.5]\) using a fractional Brownian motion driver.
+
+Results indicate that the model struggles to generalize to the rough regime, achieving a MAPE of \textbf{43.02\%}. Furthermore, Principal Component Analysis of the latent space reveals a weak correlation between the latent coordinates and the Hurst exponent (Correlation with PC1: -0.15). This suggests that ``roughness'' is an out-of-distribution feature that the current architecture, trained on smooth dynamics, does not spontaneously learn. Explicit training on rough volatility models (e.g., rHeston) is likely required to capture this feature.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.7\textwidth]{figures/rough_latent_space.png}
+    \caption{Latent Space colored by Hurst Exponent. The lack of a clear gradient indicates that the model, trained on smooth Heston, does not naturally encode roughness as a latent dimension.}
+    \label{fig:rough_latent}
+\end{figure}
+
+\subsection{Inverse Stability and Regularization}
+A key advantage of Neural Operators over standard calibration is their stability. The inverse problem of recovering parameters from prices is often ill-posed. We compared the stability of the DeepONet's latent estimation against standard least-squares calibration of Heston parameters. We perturbed the inputs (for DeepONet) and target prices (for Calibration) with 5\% Gaussian noise and measured the Coefficient of Variation (CV) of the resulting estimates across 20 trials.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.7\textwidth]{figures/stability_boxplot.png}
+    \caption{Stability Comparison. The DeepONet latent estimate is orders of magnitude more stable (CV \(\approx\) 0.001) than standard parameter calibration (CV \(\approx\) 0.86) under noise.}
+    \label{fig:stability}
+\end{figure}
+
+The DeepONet demonstrates superior stability (Mean CV: \textbf{0.0009}) compared to standard calibration (Mean CV: \textbf{0.8614}). This confirms that the Neural Operator acts as a powerful regularizer, learning a smooth inverse map that is robust to market noise, whereas pointwise calibration is highly sensitive to small perturbations.
 
 \section{Application: Neural Trading Strategies}
 

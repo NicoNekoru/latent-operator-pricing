@@ -54,9 +54,10 @@ def visualize_trajectories(z_arr, dates, ticker_arr, vol_arr, save_path='plots/c
         ax.set_ylabel('Z2')
         ax.set_zlabel('Z3')
 
-    plt.tight_layout()
+    # Adjust layout to prevent title clipping
+    plt.tight_layout(rect=[0, 0, 1, 0.92])
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    plt.savefig(save_path, dpi=300)
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.close()
 
 def visualize_clusters(z_arr, n_clusters=3, save_path='plots/latent_clusters.png'):

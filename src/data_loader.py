@@ -146,7 +146,7 @@ class HestonGenerator:
                     prices.append(price / spot) # Normalize
                 except:
                     prices.append(0.0)
-        return np.array(prices)
+        return np.maximum(np.array(prices), 0.0)
 
 class DatasetBuilder:
     """Orchestrates the creation of the enriched dataset."""

@@ -14,6 +14,9 @@
 \usepackage{microtype}      % microtypography
 \usepackage{xcolor}         % colors
 \usepackage{graphicx}       % images
+\usepackage{caption}        % captions
+
+\captionsetup{font=it}
 
 \newcommand\abs[1]{\left| #1 \right|}
 \newcommand\set[1]{\left\lbrace #1 \right\rbrace}
@@ -62,7 +65,7 @@
 \maketitle
 
 \begin{abstract}
-    Financial markets exhibit complex, non-stationary dynamics (``regimes'') that traditional parametric models like Black-Scholes-Merton (BSM) struggle to capture. We propose a \textbf{Neural Operator} framework that learns a low-dimensional latent manifold of market dynamics by solving the inverse problem of mapping historical market states to option price surfaces. Using a semi-synthetic \emph{Heston World} ground truth, we demonstrate that the learned latent space topologically organizes into distinct volatility regimes without explicit supervision. Our model, composed of a ResNet-enhanced CNN Branch Net and a GELU-activated Trunk Net, achieves a reconstruction Mean Absolute Percentage Error (MAPE) of $\approx 10\%$, significantly outperforming standard baselines. Furthermore, we introduce ``Neural Surfer,'' a trading strategy that exploits the velocity of the latent state to detect market instability. Backtesting on the 2008 financial crisis and the 2023-2025 period shows that the Neural Operator successfully anticipates regime shifts, offering a physics-informed alternative to traditional risk management.
+    Financial markets exhibit complex, non-stationary dynamics (``regimes'') that traditional parametric models like Black-Scholes-Merton (BSM) struggle to capture. We propose a \textbf{Neural Operator} framework that learns a low-dimensional latent manifold of market dynamics by solving the inverse problem of mapping historical market states to option price surfaces. Using a semi-synthetic \emph{Heston World} ground truth, we demonstrate that the learned latent space topologically organizes into distinct volatility regimes without explicit supervision. Our model, composed of a ResNet-enhanced CNN Branch Net and a GELU-activated Trunk Net, achieves a reconstruction Mean Absolute Percentage Error (MAPE) of \(\approx 7-8\%\), significantly outperforming standard baselines. Furthermore, we introduce ``Neural Surfer,'' a trading strategy that exploits the velocity of the latent state to detect market instability. Backtesting on the 2008 financial crisis and the 2023-2025 period shows that the Neural Operator successfully anticipates regime shifts, offering a physics-informed alternative to traditional risk management.
 \end{abstract}
 
 \section{Introduction}
@@ -125,12 +128,10 @@ The dataset comprises two primary components:
 We use this empirical data to drive a Heston Stochastic Volatility model. The Heston dynamics are governed by the coupled system of SDEs:
 
 The Heston dynamics are governed by the coupled system of SDEs:
-\[
-    d S_t = \mu S_t dt + \sqrt{v_t} S_t d W_t^S
-\]
-\[
+\begin{gather*}
+    d S_t = \mu S_t dt + \sqrt{v_t} S_t d W_t^S \\
     d v_t = \kappa\parens{\theta - v_t} dt + \xi \sqrt{v_t} d W_t^v
-\]
+\end{gather*}
 where \(\bb{E}\brac{d W_t^S d W_t^v} = \rho dt\). We simulate these paths using an Euler-Maruyama discretization. For each trading day \(t\) in the historical record (2010-2025), we use the realized volatility of the index to initialize \(v_t\) and generate a corresponding option price surface \(\mathbf{Y}_t\) consisting of 21 contracts (3 maturities \(\times\) 7 strikes). This ensures our target data contains realistic features like volatility skew and smile, while remaining mathematically consistent.
 
 \subsection{DeepONet Architecture}
@@ -238,17 +239,18 @@ To further illustrate the superiority of the learned representation, we compare 
 
 \begin{figure}[htbp]
     \centering
-    \begin{minipage}{0.48\textwidth}
-        \centering
-        \includegraphics[width=\linewidth]{figures/baseline_clusters.png}
+    % \begin{minipage}{0.5\textwidth}
+        % \centering
+        \includegraphics[width=0.9\linewidth]{figures/baseline_clusters.png}
         \caption{Baseline Clusters (VIX + RealizedVol)}
-    \end{minipage}\hfill
-    \begin{minipage}{0.48\textwidth}
-        \centering
-        \includegraphics[width=\linewidth]{figures/neural_clusters.png}
+    % \end{minipage}\hfill
+    \vspace{1em}
+    % \begin{minipage}{0.5\textwidth}
+        % \centering
+        \includegraphics[width=0.9\linewidth]{figures/neural_clusters.png}
         \caption{Neural Operator Latent Clusters}
-    \end{minipage}
-    \caption{Comparison of regime separation. The DeepONet learns a manifold where distinct market regimes are topologically separated, whereas the baseline features show significant overlap.}
+    % \end{minipage}
+    % \caption*{Comparison of regime separation. The DeepONet learns a manifold where distinct market regimes are topologically separated, whereas the baseline features show significant overlap.}
     \label{fig:clusters}
 \end{figure}
 

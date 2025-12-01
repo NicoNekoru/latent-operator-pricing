@@ -178,7 +178,7 @@ def train_model(epochs=200, batch_size=32, lr=5e-4, latent_dim=16, minimal=False
     plt.savefig('plots/training_loss.png', dpi=300)
     print("Training plots saved to plots/training_loss.png")
 
-    print(f"\nFinal Test Set Performance:")
+    print(f"\nFinal Validation Performance (2022):")
     print(f"MAPE: {history['val_mape'][-1]:.2f}%")
     print(f"Loss: {history['val_loss'][-1]:.6f}")
 

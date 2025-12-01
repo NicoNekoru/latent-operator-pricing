@@ -26,6 +26,11 @@ class OptionDataset(Dataset):
              # Test sets are handled manually in backtest.py, but for completeness:
              # This would be the "Recent" test set
              self.df = self.df[self.df['Date'] >= pd.Timestamp('2023-01-01')]
+        elif mode == 'crisis':
+             # Crisis Test Set: 2006-01-01 to 2009-12-31
+             start = pd.Timestamp('2006-01-01')
+             end = pd.Timestamp('2009-12-31')
+             self.df = self.df[(self.df['Date'] >= start) & (self.df['Date'] <= end)]
 
     def __len__(self):
         return len(self.df)

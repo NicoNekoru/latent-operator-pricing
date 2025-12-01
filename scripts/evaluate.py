@@ -58,5 +58,36 @@ def evaluate():
     else:
         print("WARNING: Model precision is still low.")
 
+    # --- Evaluate on Crisis Set ---
+    print("\n--- Evaluating on Crisis Set (2006-2009) ---")
+    crisis_dataset = OptionDataset(dataset_path, mode='crisis')
+    crisis_loader = DataLoader(crisis_dataset, batch_size=32, shuffle=False)
+    print(f"Crisis Set Size: {len(crisis_dataset)} samples")
+
+    total_mape_crisis = 0.0
+    total_dollar_crisis = 0.0
+    count_crisis = 0
+
+    with torch.no_grad():
+        for x, y in crisis_loader:
+            x, y = x.to(device), y.to(device)
+            current_batch_size = x.size(0)
+            grid = base_grid.expand(current_batch_size, -1, -1)
+            y_pred, _ = model(x, grid)
+
+            mape, dollar = calculate_metrics(y_pred, y)
+
+            total_mape_crisis += mape * current_batch_size
+            total_dollar_crisis += dollar * current_batch_size
+            count_crisis += current_batch_size
+
+    if count_crisis > 0:
+        avg_mape_crisis = total_mape_crisis / count_crisis
+        avg_dollar_crisis = total_dollar_crisis / count_crisis
+        print(f"Crisis MAPE: {avg_mape_crisis:.4f}%")
+        print(f"Crisis Dollar Error: ${avg_dollar_crisis:.4f}")
+    else:
+        print("No crisis data found.")
+
 if __name__ == "__main__":
     evaluate()

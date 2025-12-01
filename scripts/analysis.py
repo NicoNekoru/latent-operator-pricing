@@ -96,6 +96,7 @@ def visualize_clusters(z_arr, n_clusters=3):
     ax.set_ylabel('Z2')
     ax.set_zlabel('Z3')
 
+    plt.tight_layout()
     plt.savefig('plots/latent_clusters.png', dpi=300)
     plt.close()
 
@@ -181,6 +182,7 @@ def visualize_latent_space():
     ax.set_xlabel('Latent Dim 1')
     ax.set_ylabel('Latent Dim 2')
     ax.set_zlabel('Latent Dim 3')
+    plt.tight_layout()
     plt.savefig('plots/latent_space_3d.png', dpi=300)
     plt.close()
 
@@ -202,6 +204,7 @@ def visualize_latent_space():
     ax.set_ylabel('Latent Dim 2')
     ax.set_zlabel('Latent Dim 3')
     ax.legend()
+    plt.tight_layout()
     plt.savefig('plots/latent_space_by_ticker.png', dpi=300)
     plt.close()
 
@@ -241,6 +244,7 @@ def visualize_velocity_field(z_arr, vol_arr):
     ax.set_ylabel('Z2')
     ax.set_zlabel('Z3')
 
+    plt.tight_layout()
     plt.savefig('plots/latent_velocity.png', dpi=300)
     plt.close()
 
@@ -327,6 +331,7 @@ def visualize_latent_space():
     ax.set_xlabel('Latent Dim 1')
     ax.set_ylabel('Latent Dim 2')
     ax.set_zlabel('Latent Dim 3')
+    plt.tight_layout()
     plt.savefig('plots/latent_space_3d.png', dpi=300)
     plt.close()
 
@@ -349,6 +354,7 @@ def visualize_latent_space():
     ax.set_ylabel('Latent Dim 2')
     ax.set_zlabel('Latent Dim 3')
     ax.legend()
+    plt.tight_layout()
     plt.savefig('plots/latent_space_by_ticker.png', dpi=300)
     plt.close()
 
@@ -374,6 +380,7 @@ def visualize_latent_space():
     plt.title(f'PCA Projection of Latent Space (Explained Var: {pca.explained_variance_ratio_.sum():.2f})')
     plt.xlabel('PC 1')
     plt.ylabel('PC 2')
+    plt.tight_layout()
     plt.savefig('plots/pca_projection.png', dpi=300)
     plt.close()
 

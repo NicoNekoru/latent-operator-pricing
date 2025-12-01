@@ -139,45 +139,40 @@ def train_model(epochs=200, batch_size=32, lr=5e-4, latent_dim=16, minimal=False
     # Plot Training History
     os.makedirs('plots', exist_ok=True)
 
+    import seaborn as sns
+    sns.set_theme(style="whitegrid")
+
     fig, axes = plt.subplots(2, 2, figsize=(15, 12))
 
     # Linear Loss
-    axes[0, 0].plot(history['train_loss'], label='Train Loss')
-    axes[0, 0].plot(history['val_loss'], label='Val Loss')
+    sns.lineplot(x=range(len(history['train_loss'])), y=history['train_loss'], label='Train Loss', ax=axes[0, 0])
+    sns.lineplot(x=range(len(history['val_loss'])), y=history['val_loss'], label='Val Loss', ax=axes[0, 0])
     axes[0, 0].set_title('Model Loss (Linear)')
     axes[0, 0].set_xlabel('Epoch')
     axes[0, 0].set_ylabel('Loss')
-    axes[0, 0].legend()
-    axes[0, 0].grid(True, alpha=0.3)
 
     # Linear MAPE
-    axes[0, 1].plot(history['train_mape'], label='Train MAPE')
-    axes[0, 1].plot(history['val_mape'], label='Val MAPE')
+    sns.lineplot(x=range(len(history['train_mape'])), y=history['train_mape'], label='Train MAPE', ax=axes[0, 1])
+    sns.lineplot(x=range(len(history['val_mape'])), y=history['val_mape'], label='Val MAPE', ax=axes[0, 1])
     axes[0, 1].set_title('MAPE (Linear)')
     axes[0, 1].set_xlabel('Epoch')
     axes[0, 1].set_ylabel('MAPE (%)')
-    axes[0, 1].legend()
-    axes[0, 1].grid(True, alpha=0.3)
 
     # Log Loss
-    axes[1, 0].plot(history['train_loss'], label='Train Loss')
-    axes[1, 0].plot(history['val_loss'], label='Val Loss')
+    sns.lineplot(x=range(len(history['train_loss'])), y=history['train_loss'], label='Train Loss', ax=axes[1, 0])
+    sns.lineplot(x=range(len(history['val_loss'])), y=history['val_loss'], label='Val Loss', ax=axes[1, 0])
     axes[1, 0].set_title('Model Loss (Log Scale)')
     axes[1, 0].set_xlabel('Epoch')
     axes[1, 0].set_ylabel('Log Loss')
     axes[1, 0].set_yscale('log')
-    axes[1, 0].legend()
-    axes[1, 0].grid(True, alpha=0.3, which='both')
 
     # Log MAPE
-    axes[1, 1].plot(history['train_mape'], label='Train MAPE')
-    axes[1, 1].plot(history['val_mape'], label='Val MAPE')
+    sns.lineplot(x=range(len(history['train_mape'])), y=history['train_mape'], label='Train MAPE', ax=axes[1, 1])
+    sns.lineplot(x=range(len(history['val_mape'])), y=history['val_mape'], label='Val MAPE', ax=axes[1, 1])
     axes[1, 1].set_title('MAPE (Log Scale)')
     axes[1, 1].set_xlabel('Epoch')
     axes[1, 1].set_ylabel('Log MAPE (%)')
     axes[1, 1].set_yscale('log')
-    axes[1, 1].legend()
-    axes[1, 1].grid(True, alpha=0.3, which='both')
 
     plt.tight_layout()
     plt.savefig('plots/training_loss.png', dpi=300)

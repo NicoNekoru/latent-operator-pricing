@@ -158,16 +158,14 @@ def visualize_velocity_drawdown(velocity, future_returns, save_path='plots/veloc
     Scatter plot of Latent Velocity vs. Next 5-Day Return.
     """
     plt.figure(figsize=(8, 6))
-    plt.scatter(velocity, future_returns, alpha=0.3, s=10)
+    sns.scatterplot(x=velocity, y=future_returns, alpha=0.3, s=10)
     plt.axhline(0, color='black', linestyle='--', linewidth=0.8)
     plt.title("Latent Velocity vs. Future 5-Day Return")
     plt.xlabel("Latent Velocity $||v_t||$")
     plt.ylabel("Next 5-Day Return")
 
     # Add trend line
-    z = np.polyfit(velocity, future_returns, 1)
-    p = np.poly1d(z)
-    plt.plot(velocity, p(velocity), "r--", alpha=0.8)
+    sns.regplot(x=velocity, y=future_returns, scatter=False, color="red", line_kws={"linestyle": "--", "alpha": 0.8})
 
     plt.tight_layout()
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -180,8 +178,11 @@ def plot_pca_projection(z_arr, vol_arr, save_path='plots/pca_projection.png'):
     z_pca = pca.fit_transform(z_arr)
 
     plt.figure(figsize=(10, 8))
-    sc = plt.scatter(z_pca[:,0], z_pca[:,1], c=vol_arr, cmap='RdBu_r', alpha=0.6, s=2)
-    plt.colorbar(sc, label='Realized Volatility')
+    # Use scatterplot with hue for volatility
+    sc = sns.scatterplot(x=z_pca[:,0], y=z_pca[:,1], hue=vol_arr, palette='RdBu_r', alpha=0.6, s=10, legend='brief')
+    # Fix legend title
+    sc.legend_.set_title('Realized Vol')
+
     plt.title(f'PCA Projection of Latent Space (Explained Var: {pca.explained_variance_ratio_.sum():.2f})')
     plt.xlabel('PC 1')
     plt.ylabel('PC 2')
@@ -211,26 +212,25 @@ def plot_index_comparison(results, save_path='plots/index_comparison.png'):
 
     for ticker in results:
         c = colors.get(ticker, 'black')
-        ax1.plot(results[ticker]['dates'], results[ticker]['true'], label=f'{ticker} Truth', color=c, alpha=0.6)
-        ax1.plot(results[ticker]['dates'], results[ticker]['pred'], label=f'{ticker} Pred', color=c, linestyle='--')
-        ax2.plot(results[ticker]['dates'], results[ticker]['mae'], label=f'{ticker} MAE', color=c)
-        ax3.plot(results[ticker]['dates'], results[ticker]['mre'], label=f'{ticker} MRE', color=c)
+        # Use seaborn line plots to keep the active theme consistent.
+        sns.lineplot(x=results[ticker]['dates'], y=results[ticker]['true'], label=f'{ticker} Truth', color=c, alpha=0.6, ax=ax1)
+        sns.lineplot(x=results[ticker]['dates'], y=results[ticker]['pred'], label=f'{ticker} Pred', color=c, linestyle='--', ax=ax1)
+
+        sns.lineplot(x=results[ticker]['dates'], y=results[ticker]['mae'], label=f'{ticker} MAE', color=c, ax=ax2)
+        sns.lineplot(x=results[ticker]['dates'], y=results[ticker]['mre'], label=f'{ticker} MRE', color=c, ax=ax3)
 
     ax1.set_title("Model Generalization: Multi-Index Comparison")
     ax1.set_ylabel("Normalized Price (ATM 3-Month)")
     ax1.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    ax1.grid(True, alpha=0.3)
 
     ax2.set_title("Mean Absolute Error (MAE)")
     ax2.set_ylabel("MAE Loss")
     ax2.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    ax2.grid(True, alpha=0.3)
 
     ax3.set_title("Mean Relative Error (MRE)")
     ax3.set_ylabel("MRE (%)")
     ax3.set_xlabel("Date")
     ax3.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    ax3.grid(True, alpha=0.3)
 
     plt.tight_layout()
     os.makedirs(os.path.dirname(save_path), exist_ok=True)

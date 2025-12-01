@@ -9,7 +9,6 @@ from src.data_loader import MarketData, MacroData
 from src.strategies.benchmark import BenchmarkStrategy
 from src.strategies.neural_surfer import NeuralSurferStrategy
 from src.strategies.skew import NeuralSkewStrategy
-from src.strategies.neural_arbitrage import NeuralArbitrageStrategy
 from src.strategies.bsm_baseline import BSMVolStrategy
 
 def run_backtest_period(model, merged_data, tickers, start_date, end_date, title_suffix, filename):
@@ -87,8 +86,7 @@ def run_backtest_period(model, merged_data, tickers, start_date, end_date, title
             BenchmarkStrategy(ticker=ticker),
             BSMVolStrategy(threshold_percentile=80), # Parametric Baseline
             NeuralSurferStrategy(velocity_threshold_percentile=80),
-            NeuralSkewStrategy(),
-            NeuralArbitrageStrategy()
+            NeuralSkewStrategy()
         ]
 
         results = {}
@@ -107,19 +105,39 @@ def run_backtest_period(model, merged_data, tickers, start_date, end_date, title
 
             results[strat.name] = {'cum_ret': cum_ret, 'sharpe': sharpe}
 
+        if ticker == '^GSPC':
+            print(f"  [Metrics for {ticker}]")
+            for name, res in results.items():
+                print(f"    {name}: Sharpe = {res['sharpe']:.4f}")
+
         # 5. Plot on Subplot
+        # 5. Plot on Subplot
+        import seaborn as sns
+        sns.set_theme(style="whitegrid")
+
+        styles = {
+            'Buy & Hold': {'color': 'black', 'linestyle': '--', 'linewidth': 2, 'alpha': 0.7, 'zorder': 1},
+            'BSM Baseline': {'color': 'gray', 'linestyle': '-', 'linewidth': 1.5, 'alpha': 0.8, 'zorder': 2},
+            'Neural Surfer': {'color': 'blue', 'linestyle': '-', 'linewidth': 1.5, 'alpha': 0.9, 'zorder': 3},
+            'Neural Skew': {'color': 'green', 'linestyle': '-', 'linewidth': 1.5, 'alpha': 0.9, 'zorder': 4}
+        }
+
         for name, res in results.items():
-            # Ensure Benchmark is visible (higher zorder or distinct style if needed)
-            if "Buy & Hold" in name:
-                ax.plot(dates, res['cum_ret'], label=f"{name} (SR: {res['sharpe']:.2f})", linewidth=2, linestyle='--', color='black', alpha=0.7)
-            else:
-                ax.plot(dates, res['cum_ret'], label=f"{name} (SR: {res['sharpe']:.2f})")
+            # Match partial name
+            style = {'label': f"{name} (SR: {res['sharpe']:.2f})"}
+            for key, s in styles.items():
+                if key in name:
+                    style.update(s)
+                    break
+
+            # Use sns.lineplot but pass matplotlib kwargs for style control
+            sns.lineplot(x=dates, y=res['cum_ret'], ax=ax, **style)
 
         ax.set_title(f"{ticker} - {title_suffix}")
         ax.set_xlabel("Date")
         ax.set_ylabel("Cumulative Return")
         ax.legend(fontsize='small')
-        ax.grid(True, alpha=0.3)
+        # Grid is handled by sns.set_theme
 
     plt.tight_layout()
     os.makedirs('plots', exist_ok=True)

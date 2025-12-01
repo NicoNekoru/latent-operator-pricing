@@ -316,23 +316,6 @@ We implement three strategies that explicitly utilize the **Neural Operator's hi
 ### 1. Neural Surfer (Latent Dynamics)
 *   **Concept:** The latent space $Z$ represents the compressed state of the market. We measure the **Latent Velocity** ($||dZ/dt||$) to detect regime shifts.
 *   **Logic:** High velocity implies the market is traversing the manifold rapidly (instability). The strategy goes **Defensive (Cash)** when velocity exceeds the 80th percentile of the past year.
-
-### 2. Neural Skew (Surface Structure)
-*   **Concept:** The model predicts the *fair* option price surface for the current market state. We analyze the **Implied Skew** of this predicted surface.
-*   **Logic:** A steep skew (OTM Puts > OTM Calls) indicates the model "fears" a crash based on the learned physics. The strategy goes **Defensive** when predicted skew is high, effectively using the model's "pre-cognition" of risk.
-
-### 3. Neural Arbitrage (BSM Divergence)
-*   **Concept:** This strategy directly exploits the **Pricing Power** of the Neural Operator. We calculate the "Neural Premium" ($P_{Neural} - P_{BSM}$) for ATM Puts.
-*   **Logic:**
-    *   If $P_{Neural} \gg P_{BSM}$: The Neural Model (Physics-Informed) detects higher risk than the standard Black-Scholes model. The market is likely underpricing risk. **Signal: Defensive**.
-    *   If $P_{Neural} \approx P_{BSM}$: The market is behaving normally. **Signal: Long**.
-*   **Why it works:** The Neural Operator solves the underlying SPDE (Heston dynamics) which captures fat tails and volatility clustering that BSM misses. This strategy arbitrages the difference between "True Physics" and "Simplified Model".
-
----
-
-## 8. Implementation Roadmap (Checklist)
-
-- [ ] **Week 1: Data Pipeline**
     - [ ] Implement `yfinance` scraper.
     - [ ] Implement Heston pricing engine (QuantLib or Fourier method).
     - [ ] Generate `market_options_dataset.parquet`.

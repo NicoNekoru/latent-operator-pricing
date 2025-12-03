@@ -66,7 +66,7 @@
 \maketitle
 
 \begin{abstract}
-    Financial markets exhibit complex, non-stationary dynamics (``regimes'') that traditional parametric models like Black-Scholes-Merton (BSM) struggle to capture. We propose a \textbf{Neural Operator} framework that learns a low-dimensional latent manifold of market dynamics by solving the inverse problem of mapping historical market states to option price surfaces. Using a semi-synthetic \emph{Heston World} ground truth, we demonstrate that the learned latent space topologically organizes into distinct volatility regimes without explicit supervision. Our model, composed of a ResNet-enhanced CNN Branch Net and a GELU-activated Trunk Net, achieves a reconstruction Mean Absolute Percentage Error (MAPE) of \(\approx 7-8\%\), significantly outperforming standard baselines. Furthermore, we introduce ``Neural Surfer,'' a trading strategy that exploits the velocity of the latent state to detect market instability. Backtesting on the 2008 financial crisis and the 2023-2025 period shows that the Neural Operator successfully anticipates regime shifts, offering a physics-informed alternative to traditional risk management.
+    Financial markets exhibit complex, non-stationary dynamics (``regimes'') that traditional parametric models like Black-Scholes-Merton (BSM) struggle to capture. We propose a \textbf{Neural Operator} framework that learns a low-dimensional latent manifold of market dynamics by solving the inverse problem of mapping historical market states to option price surfaces. Using a semi-synthetic \emph{Heston World} ground truth, we demonstrate that the learned latent space topologically organizes into distinct volatility regimes without explicit supervision. Our model, composed of a ResNet-enhanced CNN Branch Net and a GELU-activated Trunk Net, achieves a reconstruction Mean Absolute Percentage Error (MAPE) of \(\sim\!8\%\), significantly outperforming standard baselines. Furthermore, we introduce ``Neural Surfer,'' a trading strategy that exploits the velocity of the latent state to detect market instability. Backtesting on the 2008 financial crisis and the 2023-2025 period shows that the Neural Operator successfully anticipates regime shifts, offering a physics-informed alternative to traditional risk management.
 \end{abstract}
 
 \section{Introduction}
@@ -74,10 +74,10 @@
 \subsection{The Inverse Problem of Market State Estimation}
 Quantitative finance is fundamentally an \emph{inverse problem} \citep{bouchouev1997}: given a set of observed prices \(\mathcal{Y}\), we seek to infer the unobservable state parameters \(\mathcal{Z}\) (e.g., volatility, correlation, drift) that generated them. Traditional parametric models, such as Black-Scholes-Merton (BSM) or Heston, assume a fixed functional form \(\mathcal{F}\) (a Stochastic Partial Differential Equation, SPDE) and solve for the parameters \(\theta\) that minimize the pricing error: \(\theta^* = \argmin_\theta \norm{\mathcal{F}(\theta) - \mathcal{Y}}\).
 
-However, this approach suffers from a critical limitation: it assumes the physics of the market \(\mathcal{F}\) is static and known. In reality, financial markets are open systems where the governing laws themselves evolve—a phenomenon known as \emph{regime switching} \citep{hamilton1989}. As argued by the Adaptive Markets Hypothesis \citep{lo2004adaptive}, market dynamics are evolutionary, driven by the interactions of adaptive agents. During a crisis, the market does not merely experience ``high volatility'' (a parameter change); the correlations and feedback loops (the equations themselves) fundamentally alter. We frame this as a \textbf{State Estimation Problem} on a latent manifold, i.e. attempting to learn a mapping that projects high-dimensional, noisy market observables onto a low-dimensional regime manifold \(\mathcal{M}\), where the coordinates correspond to the true, evolving parameters of the underlying SPDE.
+However, this approach suffers from a critical limitation: it assumes the physics of the market \(\mathcal{F}\) is static and known. In reality, financial markets are open systems where the governing laws themselves evolve—a phenomenon known as \emph{regime switching} \citep{hamilton1989}. As argued by the Adaptive Markets Hypothesis \citep{lo2004adaptive}, market dynamics are evolutionary, driven by the interactions of adaptive agents. During a crisis, the market does not merely experience ``high volatility'' (a parameter change); the correlations and feedback loops (the equations themselves) fundamentally alter. We frame this as a state estimation problem on a latent manifold, i.e. attempting to learn a mapping that projects high-dimensional, noisy market observables onto a low-dimensional regime manifold \(\mathcal{M}\), where the coordinates correspond to the true, evolving parameters of the underlying SPDE.
 
 \subsection{Neural Operator Motivation}
-Standard deep learning approaches (MLPs, LSTMs) map finite-dimensional vectors to vectors. However, market states are better conceptualized as \emph{functions}, continuous trajectories of macro-financial variables over time. Similarly, the output (an option price surface) is a function of strike and maturity. \textbf{Neural Operators} \citep{Lu_2021} are designed specifically for this function-to-function mapping. They approximate the solution operator \(\mathcal{G}: \mathcal{A} \to \mathcal{U}\) via a dual-network architecture: a \textbf{Branch Net} encodes the input function (market history) into a latent embedding, while a \textbf{Trunk Net} encodes the query coordinates (strike, maturity). The final output is the inner product of these embeddings. This is theoretically crucial for two reasons:
+Standard deep learning approaches (MLPs, LSTMs) map finite-dimensional vectors to vectors. However, market states are better conceptualized as \emph{functions}, continuous trajectories of macro-financial variables over time. Similarly, the output (an option price surface) is a function of strike and maturity. Neural operators \citep{Lu_2021} are designed specifically for this function-to-function mapping. They approximate the solution operator \(\mathcal{G}: \mathcal{A} \to \mathcal{U}\) via a dual-network architecture: a branch net encodes the input function (market history) into a latent embedding, while a trunk net encodes the query coordinates (strike, maturity). The final output is the inner product of these embeddings. This is theoretically crucial for two reasons:
 \begin{enumerate}
     \item \textbf{Operator Learning}: The model learns the mapping between function spaces, allowing it to generalize to new market regimes and grid resolutions.
     \item \textbf{Manifold Representation}: The branch net's output naturally represents the coordinates of the system on the latent regime manifold.
@@ -98,7 +98,7 @@ The regime classification problem is thus equivalent to learning the coordinate 
 \subsection{Mathematical Formulation of the Inverse Problem}
 Let \(\mathcal{F}: \mathcal{Z} \to \mathcal{Y}\) be the forward pricing operator mapping latent regimes \(z \in \mathcal{Z}\) to option price surfaces \(y \in \mathcal{Y}\). The inverse problem is to find \(z\) such that \(\mathcal{F}(z) = y_{\text{market}}\). This problem is typically ill-posed in the sense of Hadamard (solutions are not unique).
 
-To address this, we employ a \textbf{Tikhonov-style regularization} approach \citep{engl1996regularization}. We seek an approximation \(z_\theta = E_\theta(x)\) that minimizes:
+To regularize the ill-posed problem, we employ a Tikhonov-style regularization approach \citep{engl1996regularization}. We seek an approximation \(z_\theta = E_\theta(x)\) that minimizes:
 \[
     J(\theta) = \norm{\mathcal{F}(E_\theta(x)) - y_{\text{market}}}_{\mathcal{Y}}^2 + \lambda \mathcal{R}(E_\theta(x))
 \]
@@ -110,11 +110,11 @@ where \(\mathcal{R}\) imposes physical constraints (e.g., No-Arbitrage). Our Dee
 To rigorously validate our framework, we require a dataset that combines the complexity of real-world market drivers with the mathematical tractability of a known ground truth. We construct a semi-synthetic \emph{Heston World} dataset by driving a stochastic volatility simulation with empirical market data. It is important to note that by training on Heston-generated data, we are effectively learning a surrogate model for the Heston solution operator. This serves as a proof-of-concept for the manifold learning capability, but does not yet prove generalization to non-Heston dynamics (e.g., rough volatility).
 
 \subsubsection{Empirical Data Sourcing}
-We source daily historical market data from \textbf{Yahoo Finance} via the \texttt{yfinance} API, covering the period from January 1, 2006, to January 1, 2025. This 19-year window captures multiple distinct market regimes, including the 2008 Global Financial Crisis, the 2010 Flash Crash, the prolonged Bull Market of the 2010s, the 2020 COVID-19 Crash, and the subsequent recovery and inflation period.
+We source daily historical market data from \emph{Yahoo Finance} via the \texttt{yfinance} API, covering the period from January 1, 2006, to January 1, 2025. This 19-year window captures multiple distinct market regimes, including the 2008 Global Financial Crisis, the 2010 Flash Crash, the prolonged Bull Market of the 2010s, the 2020 COVID-19 Crash, and the subsequent recovery and inflation period.
 
 The dataset comprises two primary components:
 \begin{itemize}
-    \item \textbf{Equity Indices}: We aggregate price and volume data for four major US equity indices to ensure a representative sample of market behavior: the \textbf{S\&P 500} (\texttt{\^{}GSPC}), the \textbf{Nasdaq 100} (\texttt{\^{}NDX}), the \textbf{Russell 2000} (\texttt{\^{}RUT}), and the \textbf{Dow Jones Industrial Average} (\texttt{\^{}DJI}). For each index, we extract the daily `Close' price and `Volume'.
+    \item \textbf{Equity Indices}: We aggregate price and volume data for four major US equity indices to ensure a representative sample of market behavior: the \emph{S\&P 500} (\texttt{\^{}GSPC}), the \emph{Nasdaq 100} (\texttt{\^{}NDX}), the \emph{Russell 2000} (\texttt{\^{}RUT}), and the \emph{Dow Jones Industrial Average} (\texttt{\^{}DJI}). For each index, we extract the daily `Close' price and `Volume'.
     \item \textbf{Macro-Financial Indicators}: To capture the broader economic environment, we incorporate key macro-financial variables:
     \begin{itemize}
         \item \textbf{CBOE Volatility Index} (\texttt{\^{}VIX}): A proxy for market sentiment and implied volatility.
@@ -133,15 +133,15 @@ We use this empirical data to drive a Heston stochastic volatility model. The He
 where \(\bb{E}\brac{d W_t^S d W_t^v} = \rho dt\). We simulate these paths using an Euler-Maruyama discretization. For each trading day \(t\) in the historical record (2010-2025), we use the realized volatility of the index to initialize \(v_t\) and generate a corresponding option price surface \(\textbf{Y}_t\) consisting of 21 contracts (3 maturities \(\times\) 7 strikes). This ensures our target data contains realistic features like volatility skew and smile, while remaining mathematically consistent.
 
 \subsubsection{Experimental Rationale: Surrogate Modeling of a Known Topology}
-A critical aspect of our experimental design is the use of empirical realized volatility to drive both the target generation (via the Heston SPDE) and the model input. This setup defines a \textbf{Surrogate Modeling} task where the objective is to recover the solution operator of a \emph{known} dynamical system from noisy observables \citep{karniadakis2021physics}.
+A critical aspect of our experimental design is the use of empirical realized volatility to drive both the target generation (via the Heston SPDE) and the model input. This setup defines a surrogate modeling task where the objective is to recover the solution operator of a \emph{known} dynamical system from noisy observables \citep{karniadakis2021physics}.
 
 Since the Heston model is a 1-factor stochastic volatility model, the ``true'' regimes are, by definition, volatility regimes. By demonstrating that the DeepONet can autonomously recover these regimes (as shown in the latent space analysis) without explicit supervision on the parameters, we validate the network's ability to learn the topology of the underlying physics. This serves as a necessary condition for applying the framework to real market data: if the model cannot recover the manifold of a known, relatively simple system like Heston, it cannot be trusted to uncover the far more complex, unknown dynamics of the real world. Thus, this experiment acts as a rigorous ``sanity check'' for the neural operator's capacity to extract physical laws from financial time series.
 
 \subsection{DeepONet Architecture}
-We implement the model using the \textbf{DeepONet} architecture \citep{Lu_2021}, which decomposes the operator learning task into two parallel networks: the branch net and the trunk net.
+We implement the model using the DeepONet architecture \citep{Lu_2021}, which decomposes the operator learning task into two parallel networks: the branch net and the trunk net.
 
 \subsubsection{The Branch Net: Encoding Market History}
-The branch net \(\mathcal{B}: \bb{R}^{30 \times 6} \to \bb{R}^p\) processes the input function \(u(t)\), represented by the 30-day market history. We employ a \textbf{1D Convolutional Neural Network (CNN)} to capture temporal dependencies and local patterns in the multi-variate time series. The architecture consists of:
+The branch net \(\mathcal{B}: \bb{R}^{30 \times 6} \to \bb{R}^p\) processes the input function \(u(t)\), represented by the 30-day market history. We employ a 1D convolutional neural network (CNN) to capture temporal dependencies and local patterns in the multi-variate time series. The architecture consists of:
 \begin{itemize}
     \item \textbf{Conv1d}: 6 input channels \(\to\) 32 filters, kernel size 3.
     \item \textbf{Conv1d}: 32 \(\to\) 64 filters, kernel size 3.
@@ -151,7 +151,7 @@ The branch net \(\mathcal{B}: \bb{R}^{30 \times 6} \to \bb{R}^p\) processes the 
 The output vector \(\mathbf{b} \in \bb{R}^p\) serves as the embedding of the current market regime. The use of residual blocks allows for deeper feature extraction while preserving gradient flow.
 
 \subsubsection{The Trunk Net: Encoding Option Coordinates}
-The trunk net \(\mathcal{T}: \bb{R}^2 \to \bb{R}^p\) processes the query coordinates \(y = (\text{Moneyness}, \text{Maturity})\). We employ a \textbf{Residual MLP} architecture to learn a rich basis for the function space.
+The trunk net \(\mathcal{T}: \bb{R}^2 \to \bb{R}^p\) processes the query coordinates \(y = (\text{Moneyness}, \text{Maturity})\). We employ a residual MLP architecture to learn a rich basis for the function space.
 \begin{itemize}
     \item \textbf{Input}: 2 dimensions (Moneyness \(K/S\), Maturity \(\tau\)).
     \item \textbf{Hidden Layers}: 3 Residual Blocks of 128 units. Each block consists of Linear \(\to\) LayerNorm \(\to\) GELU \(\to\) Dropout.
@@ -162,9 +162,9 @@ The use of \textbf{GELU} (Gaussian Error Linear Unit) activations provides smoot
 \subsubsection{Operator Reconstruction}
 The final option price \(G(u)(y)\) is computed as the dot product of the branch and trunk outputs, plus a bias:
 \[
-    G(u)(y) = \text{Softplus}\parens{\sum_{k=1}^p b_k \cdot t_k(y) + \beta}
+    G(u)(y) = \text{softplus}\parens{\sum_{k=1}^p b_k \cdot t_k(y) + \beta}
 \]
-We apply the \textbf{Softplus} activation to ensure strictly positive option prices. This architecture allows us to query the option price at \emph{any} continuous coordinate \(y\), making the model a true resolution-invariant operator.
+The softplus activation is used to ensure strictly positive option prices. This architecture allows us to query the option price at \emph{any} continuous coordinate \(y\), making the model a true resolution-invariant operator.
 
 \subsection{Physics-Informed Loss Function}
 To ensure the learned manifold respects financial laws, we minimize a composite loss function that balances data fidelity with physical consistency:
@@ -180,7 +180,7 @@ The primary objective is to minimize the reconstruction error between the predic
 We choose MSLE over the standard Mean Squared Error (MSE) due to the wide dynamic range of option prices. Deep in-the-money (ITM) options may trade at \$100, while deep out-of-the-money (OTM) options trade at \$0.05. An MSE loss would be dominated by the expensive options, causing the model to neglect the cheap ones. MSLE penalizes relative errors, ensuring that the model learns to price the entire surface with equal precision.
 
 \subsubsection{Arbitrage Penalty (Regularization)}
-The \textbf{Arbitrage Penalty} \(\mathcal{L}_{\text{arb}}\) enforces the monotonicity of call prices with respect to strike price. A fundamental no-arbitrage condition for call options is that price must be a non-increasing function of strike: \(\partial C / \partial K \le 0\). For a set of sorted strikes \(K_1 < K_2 < \dots < K_N\), this implies \(C(K_i) \ge C(K_{i+1})\). We penalize violations using a ReLU-based energy function:
+The \emph{arbitrage penalty} \(\mathcal{L}_{\text{arb}}\) enforces the monotonicity of call prices with respect to strike price. A fundamental no-arbitrage condition for call options is that price must be a non-increasing function of strike: \(\partial C / \partial K \le 0\). For a set of sorted strikes \(K_1 < K_2 < \dots < K_N\), this implies \(C(K_i) \ge C(K_{i+1})\). We penalize violations using a ReLU-based energy function:
 \[
     \mathcal{L}_{\text{arb}} = \frac{1}{N} \sum_{i=1}^{N-1} \text{ReLU}\parens{C(K_{i+1}) - C(K_i)}
 \]
@@ -218,7 +218,7 @@ The optimized DeepONet architecture achieves a global validation mean absolute p
 This precision is critical for the subsequent manifold analysis, as it ensures that the learned latent codes \(\mathcal{Z}\) are faithful representations of the pricing dynamics.
 
 \subsection{Topological Clustering and Koopman Invariant Sets}
-To validate the ``Market Manifold Hypothesis,'' we analyze the geometric structure of the learned latent space \(\mathcal{Z} \subset \bb{R}^3\). We interpret this space through the lens of \textbf{Koopman Operator Theory} \citep{brunton2021modern}, which posits that there exists an infinite-dimensional linear operator \(\mathcal{K}\) that advances observable functions of the state space. Our Branch Net effectively learns a finite-dimensional approximation of the Koopman eigenfunctions \(\phi(x)\), which linearize the highly non-linear market dynamics.
+To validate the ``Market Manifold Hypothesis,'' we analyze the geometric structure of the learned latent space \(\mathcal{Z} \subset \bb{R}^3\). We interpret this space through the lens of Koopman operator theory \citep{brunton2021modern}, which posits that there exists an infinite-dimensional linear operator \(\mathcal{K}\) that advances observable functions of the state space. Our Branch Net effectively learns a finite-dimensional approximation of the Koopman eigenfunctions \(\phi(x)\), which linearize the highly non-linear market dynamics.
 
 Figure \ref{fig:latent_space} reveals that the learned manifold organizes into a distinct topological structure consistent with dynamical systems theory:
 
@@ -262,7 +262,7 @@ To further illustrate the superiority of the learned representation, we compare 
     \label{fig:clusters}
 \end{figure}
 
-Quantitatively, we evaluate the quality of the learned manifold using standard dimensionality reduction metrics: \textbf{Trustworthiness} and \textbf{Continuity} \citep{venna2001neighborhood}. Trustworthiness measures the preservation of local neighborhoods (avoiding false neighbors), while continuity measures the preservation of global structure (avoiding broken neighbors). Table \ref{tab:clustering} compares the DeepONet latent space against the Oracle Baseline (VIX + RealizedVol).
+Quantitatively, we evaluate the quality of the learned manifold using standard dimensionality reduction metrics: \emph{trustworthiness} and \emph{continuity} \citep{venna2001neighborhood}. Trustworthiness measures the preservation of local neighborhoods (avoiding false neighbors), while continuity measures the preservation of global structure (avoiding broken neighbors). Table \ref{tab:clustering} compares the DeepONet latent space against the Oracle Baseline (VIX + RealizedVol).
 
 \begin{table}[h]
     \centering
@@ -280,7 +280,7 @@ Quantitatively, we evaluate the quality of the learned manifold using standard d
 
 The DeepONet achieves higher trustworthiness (0.6400 vs 0.6102), indicating that the learned latent representation is more faithful to the local geometry of the high-dimensional market state than the ad-hoc baseline. While the baseline shows slightly higher continuity, this is expected as it is a simple linear projection of volatility features, whereas the DeepONet learns a non-linear topological embedding.
 
-Furthermore, the superiority of the neural operator is most evident in the ``wings'' of the distribution, Deep OTM options, where standard parametric models fail. We compare the reconstruction error against a BSM baseline calibrated to the ATM implied volatility. While the BSM model is perfect at the money (by definition), its error explodes in the wings due to its inability to capture the volatility skew.
+Furthermore, the superiority of the neural operator is most evident in the tails ends of the distribution, Deep OTM options, where standard parametric models fail. We compare the reconstruction error against a BSM baseline calibrated to the ATM implied volatility. While the BSM model is perfect at the money (by definition), its error explodes in the tails due to its inability to capture the volatility skew.
 
 \begin{itemize}
     \item \textbf{Deep OTM MAPE (BSM Baseline)}: 64.97\%
@@ -290,7 +290,7 @@ Furthermore, the superiority of the neural operator is most evident in the ``win
 This result confirms that the DeepONet has not just learned a volatility proxy, but the full non-linear pricing operator that correctly handles the skew, a critical requirement for accurate risk management in tail events.
 
 \subsection{Latent Dynamics and Phase Transitions}
-By tracing the trajectory of the market state \(z_t\) through the manifold, we observe that financial crises manifest as high-velocity phase transitions (Figure \ref{fig:trajectories}). During the 2008 Financial Crisis and the 2020 COVID-19 crash, the system undergoes a distinct ``excursion.'' First, an \textbf{Ejection} phase occurs where the state \(z_t\) rapidly accelerates away from the invariant attractor. This is followed by a \textbf{Transient Orbit} as the system traverses the sparse transient region of the manifold. Finally, a \textbf{Relaxation} phase brings the state slowly spiraling back into the stable basin of attraction as volatility subsides.
+By tracing the trajectory of the market state \(z_t\) through the manifold, we observe that financial crises manifest as high-velocity phase transitions (Figure \ref{fig:trajectories}). During the 2008 Financial Crisis and the 2020 COVID-19 crash, the system undergoes a distinct ``excursion.'' First, the state \(z_t\) rapidly accelerates away from the invariant attractor. This is followed by a transient orbit as the system traverses the sparse transient region of the manifold. Finally, the state slowly spirals back into the stable basin of attraction as volatility subsides.
 
 \begin{figure}[htbp]
     \centering
@@ -298,10 +298,10 @@ By tracing the trajectory of the market state \(z_t\) through the manifold, we o
     \caption{Market trajectories through the latent manifold during the 2008 Financial Crisis and 2020 COVID Crash. The high-velocity ``ejection'' from the invariant attractor is clearly visible.}
     \label{fig:trajectories}
 \end{figure}
-This dynamical behavior suggests that the magnitude of the velocity vector, \(\norm{\diff{Z}{t}}\), is a critical order parameter for detecting market instability. This analysis aligns with \textbf{Koopman Operator Theory}, where we seek a coordinate system where the nonlinear dynamics of the system become linear or at least simpler to analyze.
+This dynamical behavior suggests that the magnitude of the velocity vector, \(\norm{\diff{Z}{t}}\), is a critical order parameter for detecting market instability. This analysis aligns with Koopman operator theory, where we seek a coordinate system where the nonlinear dynamics of the system become linear or at least simpler to analyze.
 
 \subsection{Manifold Geometry and Interpolation}
-To verify that the learned latent space \(\mathcal{Z}\) captures the continuous geometry of the solution operator rather than merely memorizing discrete training points, we perform a \textbf{Manifold Walk}. We linearly interpolate between the latent vector of a ``Calm'' regime (\(z_{\text{calm}}\)) and a ``Crisis'' regime (\(z_{\text{crisis}}\)):
+To verify that the learned latent space \(\mathcal{Z}\) captures the continuous geometry of the solution operator rather than merely memorizing discrete training points, we perform a \emph{manifold walk}. We linearly interpolate between the latent vector of a ``Calm'' regime (\(z_{\text{calm}}\)) and a ``Crisis'' regime (\(z_{\text{crisis}}\)):
 \[
     z(\alpha) = (1-\alpha)z_{\text{calm}} + \alpha z_{\text{crisis}}, \quad \alpha \in [0, 1]
 \]
@@ -317,7 +317,7 @@ We then decode each \(z(\alpha)\) into a price surface using the Trunk Net. Figu
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.7\textwidth]{figures/velocity_drawdown.png}
-    \caption{Latent Velocity vs. Future 5-Day Return. High latent velocity (regime shifts) is strongly correlated with negative future returns, validating the ``Neural Surfer'' hypothesis.}
+    \caption{Latent Velocity vs. Future 5-Day Return. The scatter plot reveals a lack of strong directional correlation, indicating that latent velocity is a coincident measure of regime instability rather than a predictive signal for negative returns.}
     \label{fig:velocity_drawdown}
 \end{figure}
 
@@ -326,7 +326,9 @@ We then decode each \(z(\alpha)\) into a price surface using the Trunk Net. Figu
 \subsection{Generalization to Rough Volatility}
 Recent literature suggests that market volatility exhibits ``rough'' behavior, characterized by a Hurst exponent \(H < 0.5\) \citep{rosenbaum2018rough}. To test the generalization capability of our model (trained on smooth Heston, \(H=0.5\)), we generated a synthetic test set of 500 samples with varying Hurst exponents \(H \in [0.05, 0.5]\) using a fractional Brownian motion driver.
 
-Results indicate that the model struggles to generalize to the rough regime, achieving a MAPE of \textbf{43.02\%}. Furthermore, Principal Component Analysis of the latent space reveals a weak correlation between the latent coordinates and the Hurst exponent (Correlation with PC1: -0.15). This suggests that ``roughness'' is an out-of-distribution feature that the current architecture, trained on smooth dynamics, does not spontaneously learn. Explicit training on rough volatility models (e.g., rHeston) is likely required to capture this feature.
+Results indicate that the model struggles to generalize to the rough regime, achieving a MAPE of \textbf{43.02\%}. Furthermore, Principal Component Analysis of the latent space reveals a weak correlation between the latent coordinates and the Hurst exponent (Correlation with PC1: -0.15).
+
+This failure can be attributed to the spectral bias of neural networks \citep{rahaman2019spectral}, which tend to prioritize learning low-frequency components. Since the training data (\(H=0.5\)) consists of smooth Brownian paths, the Branch Net learns to treat high-frequency variations (roughness) as noise to be filtered out. Effectively, the model projects the ``rough'' manifold onto the lower-dimensional ``smooth'' submanifold. To coerce a more flexible manifold, future work must employ \emph{curriculum learning}, training on a mixed dataset of varying Hurst exponents ($H \in [0.05, 0.5]$) to force the encoder to treat roughness as a distinct, information-bearing latent dimension rather than noise.
 
 \begin{figure}[htbp]
     \centering
@@ -350,7 +352,7 @@ The DeepONet demonstrates superior stability (Mean CV: \textbf{0.0009}) compared
 \section{Application: Neural Trading Strategies}
 
 \subsection{The Neural Surfer: Surfing the Tangent Bundle}
-We propose a trading strategy that exploits the differential geometry of the learned manifold. We define the \textbf{Latent Velocity} \(v_t\) as the norm of the tangent vector \(\dot{z}_t\) in the latent space. In a discrete setting, we approximate this using the backward difference quotient:
+We propose a trading strategy that exploits the differential geometry of the learned manifold. We define the \emph{latent velocity} \(v_t\) as the norm of the tangent vector \(\dot{z}_t\) in the latent space. In a discrete setting, we approximate this using the backward difference quotient:
 \[
     v_t \approx \norm{\frac{z_t - z_{t-1}}{\Delta t}}_2
 \]
@@ -370,23 +372,23 @@ In addition to latent dynamics, we propose the \textbf{Neural Skew} strategy, wh
 A steep skew indicates that the model, having learned the underlying physics, predicts a higher probability of a crash (fat left tail). The strategy exits to cash when the predicted skew exceeds a threshold. This strategy achieved a Sharpe Ratio of \textbf{1.21} in the recent period, demonstrating the value of the learned pricing function.
 
 \subsection{Experimental Setup and Backtest Performance}
-We evaluate the strategy on the S\&P 500 (\^{}GSPC) over two distinct periods: the \textbf{2008 Financial Crisis} (2006-2009) and the \textbf{Post-COVID Recovery} (2023-2025). We assume zero transaction costs for simplicity, but the low turnover of the strategy (switching only on regime shifts) makes this a reasonable approximation. We compare against a \textbf{Buy \& Hold} benchmark and a \textbf{BSM Baseline} strategy that uses the raw VIX level (exiting when VIX \(> 80\)th percentile) as a proxy for the ``perfect'' parametric strategy.
+We evaluate the strategy on the S\&P 500 (\^{}GSPC) over two distinct periods: the 2008 Financial Crisis (2006-2009) and the Post-COVID Recovery (2023-2025). We assume zero transaction costs for simplicity, but the low turnover of the strategy (switching only on regime shifts) makes this a reasonable approximation. We compare against a Buy \& Hold benchmark and a BSM Baseline strategy that uses the raw VIX level (exiting when VIX \(> 80\)th percentile) as a proxy for the ``perfect'' parametric strategy.
 
 \begin{table}[h]
     \centering
     \caption{Strategy Performance Comparison (Sharpe Ratio)}
     \label{tab:performance}
-    \begin{tabular}{lccc}
+    \begin{tabular}{lcccc}
         \toprule
-        \textbf{Period} & \textbf{Buy \& Hold} & \textbf{BSM Baseline (VIX)} & \textbf{Neural Surfer} \\
+        \textbf{Period} & \textbf{Buy \& Hold} & \textbf{BSM Baseline} & \textbf{Neural Surfer} & \textbf{Neural Skew} \\
         \midrule
-        2008 Crisis (2006-2009) & -0.15 & \textbf{-0.10} & -0.27 \\
-        Recent (2023-2025) & 1.19 & 1.17 & 1.00 \\
+        2008 Crisis (2006-2009) & -0.15 & \textbf{-0.10} & -0.27 & -0.22 \\
+        Post-COVID (2023-2025) & 1.19 & 1.16 & 0.99 & \textbf{1.20} \\
         \bottomrule
     \end{tabular}
 \end{table}
 
-During the 2008 crisis, the BSM Baseline provided the best protection, while the Neural Surfer suffered from over-sensitivity to the smoother latent manifold of the refined model, leading to whipsaw losses. However, in the recent 2023-2025 period, the \textbf{Neural Skew} strategy (not shown in table) achieved a Sharpe Ratio of \textbf{1.21}, slightly outperforming the Buy \& Hold benchmark (1.19). This suggests that while latent velocity is a useful signal, second-order features like predicted skewness may offer more robust trading signals in modern markets.
+During the 2008 crisis, the BSM Baseline provided the best protection, while the Neural Surfer suffered from over-sensitivity to the smoother latent manifold of the refined model, leading to whipsaw losses. This aligns with our analysis of latent velocity, which showed weak correlation with future returns. However, in the recent 2023-2025 period, the \textbf{Neural Skew} strategy achieved a Sharpe Ratio of \textbf{1.20}, slightly outperforming the Buy \& Hold benchmark (1.19). This suggests that while latent velocity is a useful descriptive metric, second-order features like predicted skewness offer more robust predictive signals.
 
 \begin{figure}[htbp]
     \centering
@@ -400,7 +402,7 @@ During the 2008 crisis, the BSM Baseline provided the best protection, while the
 We have demonstrated that Deep Operator Networks can effectively learn a low-dimensional manifold that captures the complex regimes of financial markets. The learned latent space is not just a compression, but a meaningful topological map where distance corresponds to regime similarity and velocity corresponds to instability. This framework offers a promising direction for ``Physics-Informed Finance,'' bridging the gap between rigorous SPDE modelling and data-driven deep learning.
 
 \subsection{Limitations and Future Work}
-While promising, this work relies on a semi-synthetic ``Heston World'' for training, which assumes that the underlying physics of the market are well-approximated by stochastic volatility dynamics. Future work will focus on three key areas: \textbf{Empirical Calibration}, training directly on historical option chains (e.g., SPX options) to capture non-Heston features like rough volatility; \textbf{Universal Operators}, extending the architecture to learn a single operator across multiple asset classes (Equities, FX, Rates); and \textbf{Control}, formulating the optimal hedging problem as a control task on the learned manifold.
+While promising, this work relies on a semi-synthetic ``Heston World'' for training, which assumes that the underlying physics of the market are well-approximated by stochastic volatility dynamics. Future work will focus on three key areas: empirical calibration, training directly on historical option chains (e.g., SPX options) to capture non-Heston features like rough volatility; universal operators, extending the architecture to learn a single operator across multiple asset classes (Equities, FX, Rates); and control, formulating the optimal hedging problem as a control task on the learned manifold.
 
 \bibliographystyle{plainnat}
 \bibliography{references}

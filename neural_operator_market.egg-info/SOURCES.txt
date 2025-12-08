@@ -17,4 +17,5 @@ src/strategies/neural_arbitrage.py
 src/strategies/neural_projection.py
 src/strategies/neural_surfer.py
 src/strategies/neural_velocity.py
+src/strategies/bsm_dynamic.py
 src/strategies/skew.py

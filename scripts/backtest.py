@@ -2,6 +2,7 @@ import torch
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 import os
 
 from src.models import DeepONet, get_standard_grid
@@ -10,6 +11,7 @@ from src.strategies.benchmark import BenchmarkStrategy
 from src.strategies.neural_surfer import NeuralSurferStrategy
 from src.strategies.skew import NeuralSkewStrategy
 from src.strategies.bsm_baseline import BSMVolStrategy
+from src.strategies.bsm_dynamic import BSMStrategyRobust
 
 def run_backtest_period(model, merged_data, tickers, start_date, end_date, title_suffix, filename):
     device = next(model.parameters()).device
@@ -81,12 +83,12 @@ def run_backtest_period(model, merged_data, tickers, start_date, end_date, title
         price_history = np.array(price_history)
         returns = np.array(returns)
 
-        # 4. Run Strategies
         strategies = [
+            BSMVolStrategy(),
+            BSMStrategyRobust(),
             BenchmarkStrategy(ticker=ticker),
-            BSMVolStrategy(threshold_percentile=80), # Parametric Baseline
-            NeuralSurferStrategy(velocity_threshold_percentile=80),
-            NeuralSkewStrategy()
+            NeuralSurferStrategy(),
+            NeuralSkewStrategy(),
         ]
 
         results = {}
@@ -110,34 +112,17 @@ def run_backtest_period(model, merged_data, tickers, start_date, end_date, title
             for name, res in results.items():
                 print(f"    {name}: Sharpe = {res['sharpe']:.4f}")
 
-        # 5. Plot on Subplot
-        # 5. Plot on Subplot
-        import seaborn as sns
         sns.set_theme(style="whitegrid")
+        palette = sns.color_palette("coolwarm", n_colors=len(results))
 
-        styles = {
-            'Buy & Hold': {'color': 'black', 'linestyle': '--', 'linewidth': 2, 'alpha': 0.7, 'zorder': 1},
-            'BSM Baseline': {'color': 'gray', 'linestyle': '-', 'linewidth': 1.5, 'alpha': 0.8, 'zorder': 2},
-            'Neural Surfer': {'color': 'blue', 'linestyle': '-', 'linewidth': 1.5, 'alpha': 0.9, 'zorder': 3},
-            'Neural Skew': {'color': 'green', 'linestyle': '-', 'linewidth': 1.5, 'alpha': 0.9, 'zorder': 4}
-        }
-
-        for name, res in results.items():
-            # Match partial name
-            style = {'label': f"{name} (SR: {res['sharpe']:.2f})"}
-            for key, s in styles.items():
-                if key in name:
-                    style.update(s)
-                    break
-
-            # Use sns.lineplot but pass matplotlib kwargs for style control
+        for i, (name, res) in enumerate(results.items()):
+            style = {'label': f"{name} (SR: {res['sharpe']:.2f})", 'color': palette[i]}
             sns.lineplot(x=dates, y=res['cum_ret'], ax=ax, **style)
 
         ax.set_title(f"{ticker} - {title_suffix}")
         ax.set_xlabel("Date")
         ax.set_ylabel("Cumulative Return")
         ax.legend(fontsize='small')
-        # Grid is handled by sns.set_theme
 
     plt.tight_layout()
     os.makedirs('plots', exist_ok=True)
@@ -148,7 +133,6 @@ def run_backtest():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # 1. Load Model
     model = DeepONet(input_channels=6, latent_dim=16).to(device)
     try:
         model.load_state_dict(torch.load('models/deeponet.pth', map_location=device))
@@ -157,18 +141,14 @@ def run_backtest():
         return
     model.eval()
 
-    # 2. Load Data (All Tickers, Full History)
     tickers = ['^GSPC', '^NDX', '^RUT', '^DJI']
     print(f"Fetching Market Data for {tickers}...")
 
-    # Use new Modular Loaders
     market = MarketData(tickers=tickers, start_date='2006-01-01').fetch()
     macro = MacroData(start_date='2006-01-01').fetch()
 
-    # Merge
     merged_data = market.join(macro, how='left').ffill().dropna()
 
-    # 3. Run Backtests
     # Train Period (In-Sample): 2010-01-01 to 2022-12-31
     run_backtest_period(model, merged_data, tickers, '2010-01-01', '2022-12-31', "Train Set (In-Sample)", "strategy_performance_train_enriched.png")
 

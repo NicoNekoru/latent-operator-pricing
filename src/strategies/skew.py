@@ -4,51 +4,64 @@ from .base import BaseStrategy
 
 class NeuralSkewStrategy(BaseStrategy):
     """
-    Trading strategy based on the 'Neural Skew' of the predicted option surface.
+    Refined Neural Skew using Adaptive Z-Scoring.
 
     Logic:
-    - The Neural Operator predicts the option price surface (21 points) from market history.
-    - We calculate the Implied Skew: (Price_OTM_Put - Price_OTM_Call) / Price_ATM.
-    - High Skew -> The model predicts a 'crash-phobic' pricing structure -> Go Defensive.
-    - Low Skew -> The model predicts a relaxed pricing structure -> Go Long.
-
-    This strategy directly utilizes the high-dimensional output of the Neural Operator.
+    - Extracts the implied skew from the Neural Operator's predicted surface.
+    - Instead of a hard threshold, computes the Rolling Z-Score of the skew.
+    - Signals a crash when Skew spikes > X std devs above its recent baseline.
+    - This adapts to different market regimes (e.g., low-skew bull markets vs high-skew bear markets).
     """
 
-    def __init__(self, skew_threshold=8.0):
-        super().__init__("Neural Skew (Surface Structure)")
-        self.skew_threshold = skew_threshold
+    def __init__(self, z_threshold=1.5, window=126):
+        super().__init__("Neural Skew (Adaptive)")
+        self.z_threshold = z_threshold
+        self.window = window
 
     def generate_signals(self, z_history, prices=None, **kwargs):
-        """
-        Args:
-            z_history: Unused.
-            prices: (T, 21) array of predicted option prices.
-        """
         if prices is None:
-            return pd.Series(np.zeros(len(z_history)))
+            return pd.Series(np.ones(len(z_history)))
 
+        T = len(prices)
+        raw_skew = np.zeros(T)
+
+        # 1. Vectorized Skew Calculation
+        # Assume prices shape is (T, 21) where indices are sorted by strike
+        otm_put = prices[:, 0]   # Deep OTM Put
+        atm = prices[:, 10]      # ATM
+        otm_call = prices[:, -1] # Deep OTM Call
+
+        # Avoid div by zero
+        atm = np.where(atm < 1e-4, 1e-4, atm)
+
+        # Skew = (Put - Call) / ATM
+        # Note: We want "Crash" skew, which is usually high Put prices relative to Calls.
+        raw_skew = (otm_put - otm_call) / atm
+
+        # 2. Adaptive Signal Generation
         signals = []
+        skew_series = pd.Series(raw_skew)
 
-        for t in range(len(prices)):
-            price_curve = prices[t]
+        # Calculate rolling stats (shifted by 1 to avoid lookahead bias!)
+        rolling_mean = skew_series.rolling(window=self.window).mean().shift(1)
+        rolling_std = skew_series.rolling(window=self.window).std().shift(1)
 
-            # Index 0: Deep OTM Put (Low Strike)
-            # Index 10: ATM
-            # Index 20: Deep OTM Call (High Strike)
+        # Z-Score
+        z_scores = (skew_series - rolling_mean) / (rolling_std + 1e-9)
 
-            otm_put_price = price_curve[0]
-            otm_call_price = price_curve[-1]
-            atm_price = price_curve[10] + 1e-9
-
-            # Skew Metric
-            skew = (otm_put_price - otm_call_price) / atm_price
-
-            if skew > self.skew_threshold:
-                # High Skew -> Fear -> Cash
-                signals.append(0)
-            else:
-                # Normal Skew -> Long
+        for t in range(T):
+            if t < self.window:
                 signals.append(1)
+                continue
+
+            # If Skew is statistically significant spike
+            if z_scores[t] > self.z_threshold:
+                signals.append(0) # Cash
+            else:
+                # Optional Hysteresis: Stay out if skew is still moderately high
+                if len(signals) > 0 and signals[-1] == 0 and z_scores[t] > 0.0:
+                    signals.append(0)
+                else:
+                    signals.append(1)
 
         return pd.Series(signals)

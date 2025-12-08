@@ -123,7 +123,7 @@ The dataset comprises two primary components:
 \end{itemize}
 
 \subsubsection{Physics-Informed Simulation}
-We use this empirical data to drive a Heston stochastic volatility model. The Heston dynamics are governed by the coupled system of SDEs:
+We use this empirical data to drive a Heston stochastic volatility model. The Heston dynamics are governed by the coupled system of SDEs \citep{heston1993}:
 \begin{gather*}
     d S_t = \mu S_t dt + \sqrt{v_t} S_t d W_t^S \\
     d v_t = \kappa\parens{\theta - v_t} dt + \xi \sqrt{v_t} d W_t^v
@@ -403,6 +403,9 @@ We have demonstrated that Deep Operator Networks can effectively learn a low-dim
 
 \subsection{Limitations and Future Work}
 While promising, this work relies on a semi-synthetic ``Heston World'' for training, which assumes that the underlying physics of the market are well-approximated by stochastic volatility dynamics. Future work will focus on three key areas: empirical calibration, training directly on historical option chains (e.g., SPX options) to capture non-Heston features like rough volatility; universal operators, extending the architecture to learn a single operator across multiple asset classes (Equities, FX, Rates); and control, formulating the optimal hedging problem as a control task on the learned manifold.
+
+\subsection{Extension to Forward Problem}
+For the paper's formulation of the inverse problem, we discounted the use of FNO due to the domain transformation from the time domain to the output price surface. However, we can instead reformulate the pricing problem as a forward problem, where the neural operator learns the sequential evolution of the characteristic function in the frequency domain. This would allow us to use FNOs to iteratively learn the probably distribution of the log-price at each time step, which can then be used to compute the option price using the Carr-Madan formula \citep{carr2001}.
 
 \bibliographystyle{plainnat}
 \bibliography{references}

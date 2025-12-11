@@ -1,8 +1,6 @@
-from .base import BaseStrategy
-import pandas as pd
-from .base import BaseStrategy
-import pandas as pd
 import numpy as np
+import pandas as pd
+from .base import BaseStrategy
 
 class BenchmarkStrategy(BaseStrategy):
     def __init__(self, ticker="Benchmark"):

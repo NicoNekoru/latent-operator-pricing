@@ -13,9 +13,9 @@ class NeuralSkewStrategy(BaseStrategy):
     - This adapts to different market regimes (e.g., low-skew bull markets vs high-skew bear markets).
     """
 
-    def __init__(self, z_threshold=1.5, window=126):
+    def __init__(self, percentile=95, window=252):
         super().__init__("Neural Skew (Adaptive)")
-        self.z_threshold = z_threshold
+        self.percentile = percentile
         self.window = window
 
     def generate_signals(self, z_history, prices=None, **kwargs):
@@ -38,30 +38,20 @@ class NeuralSkewStrategy(BaseStrategy):
         # Note: We want "Crash" skew, which is usually high Put prices relative to Calls.
         raw_skew = (otm_put - otm_call) / atm
 
-        # 2. Adaptive Signal Generation
-        signals = []
         skew_series = pd.Series(raw_skew)
 
-        # Calculate rolling stats (shifted by 1 to avoid lookahead bias!)
-        rolling_mean = skew_series.rolling(window=self.window).mean().shift(1)
-        rolling_std = skew_series.rolling(window=self.window).std().shift(1)
+        # 2. Threshold (Rolling 95th Percentile)
+        # We want to catch the "Tail" events (Crises) where skew explodes.
+        # We use a long window (252) to capture the "Yearly High" skew context.
+        thresholds = skew_series.rolling(window=self.window, min_periods=60).quantile(self.percentile / 100.0)
+        thresholds = thresholds.fillna(np.inf)
 
-        # Z-Score
-        z_scores = (skew_series - rolling_mean) / (rolling_std + 1e-9)
+        signals = np.ones(T)
 
-        for t in range(T):
-            if t < self.window:
-                signals.append(1)
-                continue
+        # 3. Signal
+        # If Skew > Threshold -> Cash
+        is_high_skew = skew_series > thresholds
 
-            # If Skew is statistically significant spike
-            if z_scores[t] > self.z_threshold:
-                signals.append(0) # Cash
-            else:
-                # Optional Hysteresis: Stay out if skew is still moderately high
-                if len(signals) > 0 and signals[-1] == 0 and z_scores[t] > 0.0:
-                    signals.append(0)
-                else:
-                    signals.append(1)
+        signals[is_high_skew] = 0
 
         return pd.Series(signals)

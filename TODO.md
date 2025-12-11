@@ -1,0 +1,4 @@
+- [] Change to purpose built neural operator library ***
+- [] Strategy should be improved
+- [] Benchmarks and geometry should be clearer
+- [] Change shape of the model?

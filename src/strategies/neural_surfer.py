@@ -11,74 +11,36 @@ class NeuralSurferStrategy(BaseStrategy):
     - We define the 'Stable Equilibrium' as the global mean of the latent vectors (Z_mean).
     - We monitor 'Radial Velocity': Are we moving AWAY from equilibrium?
     - We monitor 'Total Energy': Kinetic (Velocity^2) + Potential (Distance^2).
-
-    Signal:
-    - Exit (Cash) when Energy is High AND Radial Velocity is positive (Ejection phase).
-    - Re-enter when Energy dissipates.
     """
 
-    def __init__(self, z_score_threshold=2.0, window=60):
+    def __init__(self, percentile=80, window=252):
         super().__init__("Neural Surfer (Phase Energy)")
-        self.threshold = z_score_threshold
+        self.percentile = percentile
         self.window = window
 
     def generate_signals(self, z_history: np.ndarray, prices=None, **kwargs) -> pd.Series:
-        # 1. Define Equilibrium (Global Mean of the training portion is best,
-        # but here we use expanding mean to prevent lookahead bias)
-        # For simplicity in backtest, we can use the running mean.
+        T = len(z_history)
+        signals = np.ones(T)
 
-        T, D = z_history.shape
-        signals = np.ones(T) # Default Long
+        if T < self.window:
+            return pd.Series(signals)
 
-        # Pre-compute velocity vectors
-        z_vel = np.zeros_like(z_history)
-        z_vel[1:] = z_history[1:] - z_history[:-1]
+        # 1. Calculate Latent Energy (Squared Deviations from Origin)
+        # Assuming Origin (0) is the "Stable/Mean" state for DeepONet latents roughly.
+        # Shape: (T, latent_dim)
+        energy = np.sum(z_history**2, axis=1) # Squared Norm
 
-        # Calculate scalar Speed (Kinetic Energy proxy)
-        speed = np.linalg.norm(z_vel, axis=1)
+        energy_series = pd.Series(energy)
 
-        # We need a warm-up period for the rolling stats
-        warmup = 60
+        # 2. Regime Threshold (Rolling 80th Percentile)
+        # We compare absolute energy to recent history of energy.
+        thresholds = energy_series.rolling(window=self.window, min_periods=60).quantile(self.percentile / 100.0)
+        thresholds = thresholds.fillna(np.inf)
 
-        for t in range(warmup, T):
-            # 1. Estimate current Equilibrium (running mean of past history)
-            # Using a sliding window to adapt to long-term regime shifts (e.g. 2010s vs 2020s)
-            local_history = z_history[t-self.window:t]
-            equilibrium = np.mean(local_history, axis=0)
+        # 3. Signal
+        # If High Energy -> Crisis -> Cash
+        is_high_energy = energy_series > thresholds
 
-            # 2. Current Position relative to Equilibrium
-            displacement = z_history[t] - equilibrium
-            dist = np.linalg.norm(displacement)
-
-            # 3. Radial Velocity: Dot product of Velocity and Displacement direction
-            # If > 0, we are moving AWAY from center. If < 0, we are reverting.
-            if dist > 1e-6:
-                radial_vel = np.dot(z_vel[t], displacement) / dist
-            else:
-                radial_vel = 0
-
-            # 4. Construct the "Instability Score" (Energy)
-            # We combine distance (potential) and speed (kinetic).
-            # We normalize speed by local volatility to get a Z-score-like metric.
-            local_speed_mu = np.mean(speed[t-self.window:t])
-            local_speed_std = np.std(speed[t-self.window:t]) + 1e-9
-
-            speed_z = (speed[t] - local_speed_mu) / local_speed_std
-
-            # SIGNAL LOGIC:
-            # Condition A: We are moving unusually fast (Speed Z > Threshold)
-            # Condition B: We are moving AWAY from safety (Radial Vel > 0)
-            # Condition C: We are already somewhat far out (Distance check - optional, implicit in Energy)
-
-            is_ejection = (speed_z > self.threshold) and (radial_vel > 0)
-
-            if is_ejection:
-                signals[t] = 0 # CASH
-            else:
-                # Hysteresis: Don't re-enter immediately if we are still highly volatile
-                if signals[t-1] == 0 and speed_z > (self.threshold * 0.5):
-                    signals[t] = 0 # Stay in Cash
-                else:
-                    signals[t] = 1 # Long
+        signals[is_high_energy] = 0
 
         return pd.Series(signals)

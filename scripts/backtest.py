@@ -9,9 +9,10 @@ from src.models import DeepONet, get_standard_grid
 from src.data_loader import MarketData, MacroData
 from src.strategies.benchmark import BenchmarkStrategy
 from src.strategies.neural_surfer import NeuralSurferStrategy
-from src.strategies.skew import NeuralSkewStrategy
+from src.strategies.neural_skew import NeuralSkewStrategy
 from src.strategies.bsm_baseline import BSMVolStrategy
-from src.strategies.bsm_dynamic import BSMStrategyRobust
+from src.strategies.bsm_dynamic import HestonRegimeStrategy
+from src.strategies.neural_manifold import NeuralManifoldRegimeAdaptiveStrategy
 
 def run_backtest_period(model, merged_data, tickers, start_date, end_date, title_suffix, filename):
     device = next(model.parameters()).device
@@ -85,10 +86,11 @@ def run_backtest_period(model, merged_data, tickers, start_date, end_date, title
 
         strategies = [
             BSMVolStrategy(),
-            BSMStrategyRobust(),
+            HestonRegimeStrategy(),
             BenchmarkStrategy(ticker=ticker),
-            NeuralSurferStrategy(),
-            NeuralSkewStrategy(),
+            NeuralSurferStrategy(percentile=80),
+            NeuralSkewStrategy(percentile=95),
+            # NeuralManifoldRegimeAdaptiveStrategy(),
         ]
 
         results = {}
@@ -150,13 +152,13 @@ def run_backtest():
     merged_data = market.join(macro, how='left').ffill().dropna()
 
     # Train Period (In-Sample): 2010-01-01 to 2022-12-31
-    run_backtest_period(model, merged_data, tickers, '2010-01-01', '2022-12-31', "Train Set (In-Sample)", "strategy_performance_train_enriched.png")
+    run_backtest_period(model, merged_data, tickers, '2010-01-01', '2022-12-31', "Train Set (In-Sample)", "strategy_train.png")
 
     # Test Set 1: Crisis Period (Out-of-Sample) 2006-01-01 to 2009-12-31
-    run_backtest_period(model, merged_data, tickers, '2006-01-01', '2009-12-31', "Test Set 1 (Crisis)", "strategy_performance_crisis_enriched.png")
+    run_backtest_period(model, merged_data, tickers, '2006-01-01', '2009-12-31', "Test Set 1 (Crisis)", "strategy_crisis.png")
 
     # Test Set 2: Recent Period (Out-of-Sample) 2023-01-01 to Present
-    run_backtest_period(model, merged_data, tickers, '2023-01-01', '2025-12-31', "Test Set 2 (Recent)", "strategy_performance_test_enriched.png")
+    run_backtest_period(model, merged_data, tickers, '2023-01-01', '2025-12-31', "Test Set 2 (Recent)", "strategy_test.png")
 
 if __name__ == "__main__":
     run_backtest()

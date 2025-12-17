@@ -1,217 +1,263 @@
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import QuantLib as ql
-from datetime import date, timedelta
-import os
 import pandas_datareader.data as web
+import os
+from scipy.interpolate import LinearNDInterpolator
+from src.utils import calculate_implied_volatility
 
-class MarketData:
-    """Fetches and processes standard asset price data."""
-    def __init__(self, tickers=['^GSPC', '^NDX', '^RUT', '^DJI'], start_date='2006-01-01', end_date=None):
-        self.tickers = tickers
+# Define the standard grid as expected by the model
+# Maturities: 1, 3, 6 months -> Approx 30, 91, 182 days
+# Moneyness: 0.8 to 1.2
+GRID_MATURITIES_YEARS = np.array([1/12, 3/12, 6/12]) # [0.0833, 0.25, 0.5]
+GRID_MONEYNESS = np.array([0.8, 0.9, 0.95, 1.0, 1.05, 1.1, 1.2])
+
+class MarketDataLoader:
+    """Fetches historical market and macro data for input features."""
+    def __init__(self, start_date='2010-01-01', end_date='2023-12-31', ticker='SPY'):
         self.start_date = start_date
         self.end_date = end_date
+        self.ticker = ticker
 
     def fetch(self):
-        print(f"Fetching Market Data for {self.tickers}...")
-        data = yf.download(self.tickers, start=self.start_date, end=self.end_date, group_by='ticker')
-
-        processed_dfs = []
-        is_multi = isinstance(data.columns, pd.MultiIndex)
-
-        for ticker in self.tickers:
+        print(f"Fetching Market Data for {self.ticker}...")
+        # 1. Market Data (Price, Volume)
+        df = yf.download(self.ticker, start=self.start_date, end=self.end_date, auto_adjust=False)
+        print("DEBUG: Market Data Columns:", df.columns)
+        if isinstance(df.columns, pd.MultiIndex):
             try:
-                if is_multi:
-                    df = data[ticker].copy()
-                elif len(self.tickers) == 1:
-                    df = data.copy()
-                else:
-                    continue
-
-                if df.empty: continue
-
-                # Calculate Returns & Vol
-                df['LogReturn'] = np.log(df['Close'] / df['Close'].shift(1))
-                df['RealizedVol'] = df['LogReturn'].rolling(window=21).std() * np.sqrt(252)
-
-                df = df.dropna()
-                df['Ticker'] = ticker
-                processed_dfs.append(df)
+                df = df.xs(self.ticker, axis=1, level=0)
             except KeyError:
-                print(f"Warning: Could not process {ticker}")
-                continue
+                 # Check if ticker is in level 1
+                 if self.ticker in df.columns.levels[1]:
+                     df = df.xs(self.ticker, axis=1, level=1)
+                 else:
+                     print("DEBUG: MultiIndex found but Ticker not in level 0 or 1. Flattening.")
+                     # yfinance can return a MultiIndex with a redundant populated level
+                     # or columns in (PriceType, Ticker) format.
+                     pass
 
-        if not processed_dfs:
-            raise ValueError("No market data processed!")
 
-        return pd.concat(processed_dfs)
+        # Calc Returns & Vol
+        df['LogReturn'] = np.log(df['Close'] / df['Close'].shift(1))
+        df['RealizedVol'] = df['LogReturn'].rolling(window=21).std() * np.sqrt(252)
 
-class MacroData:
-    """Fetches macro indicators and calculates Buffett Indicator."""
-    def __init__(self, start_date='2006-01-01'):
-        self.start_date = start_date
-
-    def fetch(self):
-        print("Fetching Macro Data (VIX, TNX, Wilshire 5000)...")
-
-        # 1. Fetch Daily Macro from yfinance
-        # ^VIX: Volatility Index
-        # ^TNX: 10-Year Treasury Yield (x10)
-        # ^W5000: Wilshire 5000 (Total Market Cap Proxy)
+        # 2. Macro Data (VIX, TNX)
+        print("Fetching Macro Data...")
         macro_tickers = ['^VIX', '^TNX', '^W5000']
-        yf_data = yf.download(macro_tickers, start=self.start_date, group_by='ticker')
+        macro_df = yf.download(macro_tickers, start=self.start_date, end=self.end_date, group_by='ticker')
 
-        # Extract Close prices
-        macro_df = pd.DataFrame(index=yf_data.index)
+        # Extract Close prices safely
+        clean_macro = pd.DataFrame(index=macro_df.index)
+        for t in macro_tickers:
+            try:
+                if isinstance(macro_df.columns, pd.MultiIndex):
+                    clean_macro[t] = macro_df[t]['Close']
+                else:
+                    # If flat, might fail if multiple tickers. Assuming fetch works.
+                    continue
+            except KeyError:
+                pass
 
-        # Handle MultiIndex or Single Index
-        if isinstance(yf_data.columns, pd.MultiIndex):
-            if '^VIX' in yf_data.columns.levels[0]:
-                macro_df['VIX'] = yf_data['^VIX']['Close']
-            if '^TNX' in yf_data.columns.levels[0]:
-                macro_df['TNX'] = yf_data['^TNX']['Close']
-            if '^W5000' in yf_data.columns.levels[0]:
-                macro_df['W5000'] = yf_data['^W5000']['Close']
-        else:
-            # Fallback if structure is weird
-            pass
+        # Rename
+        clean_macro = clean_macro.rename(columns={'^VIX': 'VIX', '^TNX': 'TNX', '^W5000': 'W5000'})
 
-        # 2. Fetch Quarterly GDP from FRED
-        print("Fetching GDP from FRED...")
+        # Merge
+        full_df = df.join(clean_macro, how='left')
+
+        # 3. GDP (Low frequency, forward fill)
         try:
+            print("Fetching GDP...")
             gdp = web.DataReader('GDP', 'fred', self.start_date)
-            # Resample GDP to daily (forward fill) to align with market data
             gdp_daily = gdp.resample('D').ffill()
-            macro_df = macro_df.join(gdp_daily, how='left')
-            macro_df['GDP'] = macro_df['GDP'].ffill() # Forward fill for days after last quarter
+            full_df = full_df.join(gdp_daily, how='left')
+            full_df['GDP'] = full_df['GDP'].ffill()
+        except:
+            print("GDP fetch failed. Using constant fallback.")
+            full_df['GDP'] = 20000.0
+
+        # 4. Feature Engineering
+        # Buffett Indicator
+        full_df['Buffett_Ind'] = full_df['W5000'] / (full_df['GDP'] + 1e-9)
+
+        # Normalize Features
+        full_df['VIX'] = full_df['VIX'] / 100.0
+        full_df['TNX'] = full_df['TNX'] / 1000.0  # 40 -> 0.04
+
+        # Log Volume
+        full_df['Vol_Feature'] = np.log(full_df['Volume'] + 1) / 20.0
+
+        return full_df.dropna()
+
+class EmpiricalOptionProcessor:
+    """Processes the raw empirical parquet file into training samples."""
+    def __init__(self, parquet_path):
+        self.parquet_path = parquet_path
+
+    def load_and_process(self, market_df):
+        print(f"Loading empirical options from {self.parquet_path}...")
+        try:
+            raw_ops = pd.read_parquet(self.parquet_path)
         except Exception as e:
-            print(f"Error fetching GDP: {e}. Using constant growth approximation.")
-            # Fallback: Assume 20T growing at 2%
-            macro_df['GDP'] = 20000.0 # Placeholder
+            print(f"Error loading parquet: {e}")
+            raise
 
-        # 3. Calculate Features
-        # Buffett Indicator: Market Cap / GDP
-        # Note: Wilshire 5000 is an index, not raw cap in dollars, but it's a valid proxy for the ratio's trend.
-        macro_df['Buffett_Ind'] = macro_df['W5000'] / (macro_df['GDP'] + 1e-9)
+        # Ensure Dates
+        raw_ops['QUOTE_DATE'] = pd.to_datetime(raw_ops['QUOTE_DATE'])
+        market_dates = set(market_df.index)
 
-        # Normalize/Scale features roughly to model range (0-1 or similar)
-        # VIX is 0-100, divide by 100
-        macro_df['VIX'] = macro_df['VIX'] / 100.0
-        # TNX is yield * 10 (e.g. 40 = 4.0%), divide by 1000 to get 0.04
-        macro_df['TNX'] = macro_df['TNX'] / 1000.0
-
-        # Fill missing
-        macro_df = macro_df.ffill().bfill()
-
-        return macro_df[['VIX', 'TNX', 'Buffett_Ind']]
-
-class HestonGenerator:
-    """Simulates option surfaces using QuantLib."""
-    def __init__(self, risk_free_rate=0.03):
-        self.risk_free_rate = risk_free_rate
-        self.day_count = ql.Actual365Fixed()
-        self.calendar = ql.UnitedStates(ql.UnitedStates.NYSE)
-        self.engine = None
-
-    def setup_engine(self, spot, v0, kappa, theta, sigma, rho):
-        today = date.today()
-        ql_date = ql.Date(today.day, today.month, today.year)
-        ql.Settings.instance().evaluationDate = ql_date
-
-        flat_ts = ql.YieldTermStructureHandle(ql.FlatForward(ql_date, self.risk_free_rate, self.day_count))
-        dividend_ts = ql.YieldTermStructureHandle(ql.FlatForward(ql_date, 0.0, self.day_count))
-        spot_handle = ql.QuoteHandle(ql.SimpleQuote(spot))
-
-        process = ql.HestonProcess(flat_ts, dividend_ts, spot_handle, v0, kappa, theta, sigma, rho)
-        model = ql.HestonModel(process)
-        self.engine = ql.AnalyticHestonEngine(model)
-        self.ql_date = ql_date
-
-    def generate(self, spot):
-        maturities = [1, 3, 6] # Months
-        moneyness = [0.8, 0.9, 0.95, 1.0, 1.05, 1.1, 1.2]
-        prices = []
-
-        for m in maturities:
-            maturity_date = self.calendar.adjust(self.ql_date + ql.Period(m, ql.Months))
-            for k_ratio in moneyness:
-                strike = spot * k_ratio
-                payoff = ql.PlainVanillaPayoff(ql.Option.Call, strike)
-                exercise = ql.EuropeanExercise(maturity_date)
-                option = ql.VanillaOption(payoff, exercise)
-                option.setPricingEngine(self.engine)
-                try:
-                    price = option.NPV()
-                    prices.append(price / spot) # Normalize
-                except:
-                    prices.append(0.0)
-        return np.maximum(np.array(prices), 0.0)
-
-class DatasetBuilder:
-    """Orchestrates the creation of the enriched dataset."""
-    def __init__(self, output_path='data/processed_dataset.parquet'):
-        self.output_path = output_path
-
-    def build(self):
-        # 1. Fetch Data
-        market = MarketData().fetch()
-        macro = MacroData().fetch()
-
-        # 2. Merge
-        # Join Macro data to Market data on Date index
-        merged = market.join(macro, how='left').ffill().dropna()
-
-        # 3. Generate Surfaces
-        heston = HestonGenerator()
         dataset_rows = []
 
-        print("Generating Heston Surfaces and building dataset...")
-        for ticker in merged['Ticker'].unique():
-            df = merged[merged['Ticker'] == ticker].sort_index()
+        # Group by Date
+        print("Processing daily surfaces...")
+        grouped = raw_ops.groupby('QUOTE_DATE')
 
-            for i in range(30, len(df)):
-                row = df.iloc[i]
+        for current_date, group in grouped:
+            if current_date not in market_dates:
+                continue
 
-                # Heston Params (Heuristic)
-                v0 = row['RealizedVol'] ** 2
-                kappa, theta, sigma, rho = 2.0, v0, 0.3, -0.7
+            # 1. Get History Window (30 days)
+            # Find integer location in market_df
+            try:
+                idx = market_df.index.get_loc(current_date)
+            except KeyError:
+                continue
 
-                heston.setup_engine(row['Close'], v0, kappa, theta, sigma, rho)
-                prices = heston.generate(row['Close'])
+            if idx < 30: continue
 
-                # Input Window (30 days)
-                window = df.iloc[i-30:i]
+            window = market_df.iloc[idx-30:idx]
+            if len(window) != 30: continue
 
-                # Features: [LogReturn, Vol, VIX, Volume, TNX, Buffett]
-                # Volume is log-normalized: Log(Volume + 1) / 20.0
-                vol_feature = np.log(window['Volume'] + 1) / 20.0
+            # Construct Input Features [LogReturn, Vol, VIX, Volume, TNX, Buffett]
+            features = np.stack([
+                window['LogReturn'].values,
+                window['RealizedVol'].values,
+                window['VIX'].values,
+                window['Vol_Feature'].values,
+                window['TNX'].values,
+                window['Buffett_Ind'].values
+            ], axis=1).flatten() # (180,)
 
-                # Stack Features
-                # Shape: (30, 6)
-                features = np.stack([
-                    window['LogReturn'].values,
-                    window['RealizedVol'].values,
-                    window['VIX'].values,
-                    vol_feature.values,
-                    window['TNX'].values,
-                    window['Buffett_Ind'].values
-                ], axis=1)
+            # 2. Construct Target Surface
+            # Need to interpolate available options onto standard grid
+            # Available points:
+            # X: (Moneyness, TTM)
+            # Y: Normalized Price (Price / Spot)
 
-                dataset_rows.append({
-                    'Date': df.index[i],
-                    'Ticker': ticker,
-                    'Input_Features': features.flatten(), # Flatten to 1D (180,) for Parquet
-                    'Target_Prices': prices
-                })
+            # Calculate metrics
+            spot = group['UNDERLYING_LAST'].iloc[0] # Assume constant for the day eod
 
-            print(f"Processed {ticker}...")
+            # We use C_LAST. Filter for valid data.
+            # TTM in Years
+            valid_ops = group[(group['DTE'] > 0) & (group['C_LAST'] > 0)].copy()
+            if valid_ops.empty: continue
 
-        # 4. Save
-        final_df = pd.DataFrame(dataset_rows)
+            valid_ops['TTM'] = valid_ops['DTE'] / 365.0
+            valid_ops['Moneyness'] = valid_ops['STRIKE'] / spot
+            valid_ops['NormPrice'] = valid_ops['C_LAST'] / spot
+
+            # Prepare interpolation
+            points = valid_ops[['Moneyness', 'TTM']].values
+            values = valid_ops['NormPrice'].values
+
+            # Target grid points at specific (k, m) pairs.
+            # Output order follows models.get_standard_grid:
+            # inner loop moneyness, outer loop maturity.
+
+            target_grid = []
+            for m in GRID_MATURITIES_YEARS:
+                for k in GRID_MONEYNESS:
+                    target_grid.append([k, m])
+            target_grid = np.array(target_grid) # (21, 2)
+
+            # Interpolate
+            # Use LinearNDInterpolator
+            interp = LinearNDInterpolator(points, values, fill_value=np.nan)
+            interpolated_prices = interp(target_grid)
+
+            # Check for NaNs (extrapolation)
+            # If too many NaNs, skip date or fill?
+            # Fill deep OTM NaNs with 0; reject missing ITM/ATM values.
+            # Strategy: If NaN and Moneyness > 1.1, assume 0.
+            # Else, skip if NaN.
+
+            # Retrieve TNX (Risk-Free Rate) for this date
+            # TNX is in window['TNX'], last value.
+            # window['TNX'] was normalized / 1000 in fetch() ? No, check fetch().
+            # fetch(): full_df['TNX'] = full_df['TNX'] / 1000.0 (line 84)
+            # So it is 0.04 for 4%. Correct.
+            r_rate = window['TNX'].iloc[-1]
+
+            final_prices = []
+            final_ivs = []
+            valid_surface = True
+
+            for i, (k, m) in enumerate(target_grid):
+                val = interpolated_prices[i]
+                if np.isnan(val):
+                    # Heuristic: deep OTM calls are 0
+                    if k > 1.1:
+                        val = 0.0
+                    else:
+                        valid_surface = False
+                        break
+
+                final_prices.append(val)
+
+                # Calculate IV
+                # val is Price/Spot.
+                # BSM Inputs: S=1, K=k, T=m, r=r_rate, Price=val
+                iv = calculate_implied_volatility(
+                    price=val, S=1.0, K=k, T=m, r=r_rate, option_type='call'
+                )
+
+                # Sanity check IV
+                if np.isnan(iv) or iv < 0.01: iv = 0.01
+                if iv > 3.0: iv = 3.0
+
+                final_ivs.append(iv)
+
+            if not valid_surface:
+                continue
+
+            # Data Cleaning: Filter out samples with extreme IVs
+            # These are usually deep OTM artifacts that confuse the model
+            iv_array = np.array(final_ivs)
+            if np.any(iv_array > 1.5) or np.any(iv_array < 0.01):
+                continue
+
+            dataset_rows.append({
+                'Date': current_date,
+                'Ticker': 'SPY',
+                'Input_Features': features,
+                'Target_Prices': np.array(final_prices), # (21,)
+                'Target_IVs': iv_array                   # (21,)
+            })
+
+        return pd.DataFrame(dataset_rows)
+
+class DatasetBuilder:
+    def __init__(self, output_path='data/processed_dataset.parquet', raw_path='data/data/empirical/processed/data.parquet'):
+        self.output_path = output_path
+        self.raw_path = raw_path
+
+    def build(self):
+        # 1. Fetch Features
+        loader = MarketDataLoader()
+        market_df = loader.fetch()
+
+        # 2. Process Targets
+        processor = EmpiricalOptionProcessor(self.raw_path)
+        final_df = processor.load_and_process(market_df)
+
+        if final_df.empty:
+            raise ValueError("No valid samples generated! Check data alignment/interpolation.")
+
+        # 3. Save
+        print(f"Generated {len(final_df)} samples.")
         os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
         final_df.to_parquet(self.output_path)
-        print(f"Saved enriched dataset to {self.output_path}")
+        print(f"Saved to {self.output_path}")
 
 if __name__ == "__main__":
     DatasetBuilder().build()

@@ -1,0 +1,48 @@
+# macOS
+.DS_Store
+
+# Build Artifacts
+*.egg-info/
+
+# Debug Logs
+*_debug.txt
+*_log.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.ipynb_checkpoints/
+
+# Data
+data/*.parquet
+data/processed/
+data/raw/
+
+# Models & Training
+training/models/*.pth
+training/logs/*.json
+*.pt
+*.ckpt
+
+# Project Artifacts
+plots/
+analysis/plots/
+writeup/*.pdf
+writeup/*.log
+writeup/*.aux
+writeup/*.bbl
+writeup/*.blg
+writeup/*.out
+writeup/*.synctex.gz
+writeup/*.fls
+writeup/*.fdb_latexmk
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env
+venv/
+env/

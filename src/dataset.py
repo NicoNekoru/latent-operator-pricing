@@ -43,6 +43,13 @@ class OptionDataset(Dataset):
         x = x_flat.reshape(30, 6)
 
         # Target: (21,)
-        y = np.array(row['Target_Prices'], dtype=np.float32)
+        y_price = np.array(row['Target_Prices'], dtype=np.float32)
+        y_iv = np.array(row['Target_IVs'], dtype=np.float32)
 
-        return torch.tensor(x), torch.tensor(y)
+        # Domain Label for Adversarial Training
+        # Domain 0: Pre-COVID/Inflation (<= 2019)
+        # Domain 1: Post-COVID/Inflation (> 2019) -> Target Regime
+        date = pd.Timestamp(row['Date'])
+        domain_label = 1.0 if date.year > 2019 else 0.0
+
+        return torch.tensor(x), torch.tensor(y_price), torch.tensor(y_iv), torch.tensor(domain_label, dtype=torch.float32)

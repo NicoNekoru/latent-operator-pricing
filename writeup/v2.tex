@@ -41,7 +41,7 @@
 \maketitle
 
 \begin{abstract}
-    Financial markets exhibit non-stationary dynamics (``regimes'') that evolve according to unknown physical laws, increasingly characterized by roughness and high-frequency jumps. Traditional models assume smooth physics and fail to generalize to modern crisis regimes (e.g., the 2022 Inflation/Rate shock). We propose a \textbf{Physics-Informed Neural Operator} that learns the global solution manifold of the pricing SPDE. Our framework introduces three key innovations: (1) \textbf{Rough Heston Pre-training}, a curriculum strategy that primes the model with fractional Brownian motion (\(H\approx 0.1\)) physics to capture market roughness; (2) A \textbf{Spectral DeepONet} architecture that uses FFT layers to learn resolution-invariant volatility features; and (3) A \textbf{Differentiable BSM Layer} that enforces No-Arbitrage constraints by design. On out-of-sample data (2022), our model achieves a Mean Absolute Percentage Error (MAPE) of \textbf{18\%}, significantly outperforming standard baselines (>45\%). Furthermore, we demonstrate that the model's latent space spontaneously topologically separates into distinct pre- and post-crisis regimes, validating the manifold hypothesis.
+    Financial markets exhibit non-stationary dynamics (``regimes'') that evolve according to unknown physical laws, increasingly characterized by roughness and high-frequency jumps. Traditional models assume smooth physics and fail to generalize to modern crisis regimes (e.g., the 2022 Inflation/Rate shock). We propose a \textbf{Physics-Informed Neural Operator} that learns the global solution manifold of the pricing SPDE. Our framework utilizes three key innovations: (1) \textbf{Rough Heston Pre-training}, a curriculum strategy that primes the model with fractional Brownian motion (\(H\approx 0.1\)) physics to capture market roughness; (2) A \textbf{Spectral DeepONet} architecture that uses FFT layers to learn resolution-invariant volatility features; and (3) A \textbf{Differentiable BSM Layer} that enforces No-Arbitrage constraints by design. On out-of-sample data (2022), our model achieves a Mean Absolute Percentage Error (MAPE) of \textbf{18\%}, significantly outperforming standard baselines (>45\%). Furthermore, we demonstrate that the model's latent space spontaneously topologically separates into distinct pre- and post-crisis regimes, validating the manifold hypothesis.
 \end{abstract}
 
 \section{Introduction}
@@ -59,17 +59,58 @@ We introduce a novel framework that combines Operator Learning with Physics-Info
     \item \textbf{Spectral Latent Space}: We show that our Spectral Neural Operator learns a latent geometry where different market regimes are topologically separated, enabling unsupervised regime identification.
 \end{enumerate}
 
+\subsection{Related Work}
+
+\paragraph{Stochastic Volatility Models.}
+The failure of the Black-Scholes constant volatility assumption \citep{black1973pricing} motivated extensive research into stochastic volatility. \citet{heston1993} introduced a tractable model with mean-reverting variance, while \citet{dupire1994pricing} developed local volatility surfaces. \citet{gatheral2006volatility} provided a practitioner's synthesis of these approaches. However, all classical models struggle with regime shifts where the volatility dynamics themselves change.
+
+\paragraph{Rough Volatility.}
+Empirical studies revealed that realized volatility exhibits rougher sample paths than standard diffusions. \citet{mandelbrot1968fractional} introduced fractional Brownian motion (fBm), and \citet{bayer2016pricing} demonstrated its applicability to option pricing. \citet{rosenbaum2018rough} derived the characteristic function for rough Heston, enabling semi-analytical pricing. Our work uses rough volatility as an inductive bias for pre-training.
+
+\paragraph{Neural Operators.}
+\citet{Lu_2021} introduced DeepONet, proving universal approximation for operators. \citet{li2020fourier} proposed the Fourier Neural Operator (FNO) for PDEs on uniform grids. \citet{kovachki2021neuraloperator} unified these approaches. Our Spectral DeepONet combines spectral convolutions with the DeepONet architecture to handle the domain mismatch between time series inputs and price surface outputs.
+
+\paragraph{Deep Learning for Derivatives.}
+Recent work has applied neural networks to derivatives pricing. \citet{horvath2021deep} used deep learning for calibration in rough volatility models. \citet{buehler2019deep} introduced deep hedging for model-free risk management. \citet{chen2018neural} and \citet{kidger2020neural} developed Neural ODEs and CDEs for continuous-time dynamics. Our approach differs by learning the pricing operator directly rather than approximating specific model dynamics.
+
+\section{Theoretical Framework}
+
+\subsection{The Market Manifold Hypothesis}
+We posit that the observable market state \(x_t \in \mathbb{R}^N\) (prices, volumes, implied volatilities) is a noisy projection of a latent state \(z_t\) evolving on a low-dimensional Riemannian manifold \(\mathcal{M}\):
+\[
+    x_t = \Phi(z_t) + \epsilon_t, \quad z_t \in \mathcal{M} \subset \mathbb{R}^d
+\]
+where \(\Phi: \mathcal{M} \to \mathbb{R}^N\) is the observation map and \(\epsilon_t\) represents market noise. This formulation is inspired by Takens' embedding theorem \citep{takens1981detecting}, which guarantees that delay coordinates of a scalar observable can reconstruct the attractor of a dynamical system. The regime classification problem is thus equivalent to learning the coordinate chart of \(\mathcal{M}\). Stable markets correspond to regions of \(\mathcal{M}\) with low curvature (flat geometry), while crises correspond to regions of high curvature or topological singularities where the dynamics undergo rapid transitions.
+
+This formulation connects to dynamical systems theory: the latent coordinates \(z_t\) can be interpreted as Koopman eigenfunctions that linearize the non-linear market dynamics \citep{brunton2021modern}. Stable market regimes correspond to \emph{invariant sets} (attractors), while crises represent \emph{transient excursions} governed by eigenfunctions with large growth rates.
+
+\subsection{The Inverse Problem of Pricing}
+Let \(\mathcal{F}: \mathcal{Z} \to \mathcal{Y}\) be the forward pricing operator mapping latent market states \(z \in \mathcal{Z}\) to option price surfaces \(y \in \mathcal{Y}\). The inverse problem is to recover \(z\) such that \(\mathcal{F}(z) = y_{\text{market}}\). This problem is typically ill-posed in the sense of Hadamard: solutions may not be unique, and small perturbations in \(y\) can yield large changes in \(z\).
+
+To regularize the ill-posed problem, we adopt a Tikhonov-style approach \citep{engl1996regularization}. We seek an encoder \(E_\theta: \mathcal{X} \to \mathcal{Z}\) that minimizes:
+\[
+    J(\theta) = \norm{\mathcal{F}(E_\theta(x)) - y_{\text{market}}}_{\mathcal{Y}}^2 + \lambda \mathcal{R}(E_\theta(x))
+\]
+where \(\mathcal{R}\) imposes physical constraints. In our framework, the regularizer is decomposed into two components: (1) the \textbf{Rough Heston prior}, which constrains the solution to lie on the manifold of rough volatility dynamics, and (2) the \textbf{No-Arbitrage constraint}, enforced by the differentiable BSM layer. Our Spectral DeepONet effectively learns the regularized inverse map \(E_\theta \approx \mathcal{F}^\dagger\).
+
+\subsection{Neural Operators vs. Instance-Based Solvers}
+Traditional numerical methods for SPDEs (Finite Difference, Monte Carlo) are \emph{instance-based}: for each parameter set \(\theta \in \Theta\), the solver restarts from scratch. This faces the curse of dimensionality \citep{Bellman1957} when characterizing global behavior---constructing a surrogate over high-dimensional \(\Theta\) (e.g., a local volatility surface) requires exponentially many solves.
+
+\textbf{Neural Operators} \citep{Lu_2021, kovachki2021neuraloperator} instead learn the infinite-dimensional mapping \(\mathcal{G}: \mathcal{A} \to \mathcal{U}\) directly. By approximating the operator, the network captures the global geometry of the solution manifold from a finite set of trajectories, breaking the curse of dimensionality. Once trained, evaluation is resolution-invariant and orders of magnitude faster.
+
+\paragraph{Why DeepONet over FNO?} While Fourier Neural Operators (FNO) excel for PDEs on uniform grids \citep{kovachki2021neuraloperator}, they assume input and output share the same physical domain. Our problem has a fundamental \textbf{domain mismatch}: the input is a time series (domain: time), while the output is a price surface (domain: moneyness \(\times\) maturity). DeepONet's bipartite Branch-Trunk structure handles this naturally. Furthermore, DeepONet provides an explicit low-dimensional latent vector (the Branch output), essential for our manifold analysis, whereas FNO's representation is distributed across frequency modes.
+
 \section{Methodology}
 
 \subsection{Architecture: Spectral DeepONet}
 We employ a modified Deep Operator Network (DeepONet) \citep{Lu_2021} designed for high-frequency financial data.
 
 \subsubsection{Branch Net (Spectral Encoder)}
-The Branch Net \(\mathcal{B}\) maps the 30-day market history \(u(t)\) to a latent embedding \(\mathbf{b}\). Instead of standard CNNs, we use \textbf{Spectral Convolutions} (FFT) \citep{kovachki2021neuraloperator}.
+The Branch Net \(\mathcal{B}: \mathbb{R}^{30 \times 6} \to \mathbb{R}^p\) maps the 30-day market history \(u(t)\) to a latent embedding \(\mathbf{b}\). Instead of standard CNNs (which have localized receptive fields), we employ \textbf{Spectral Convolutions} \citep{kovachki2021neuraloperator}:
 \[
-    \mathcal{K}(x) = \mathcal{F}^{-1}(R \cdot \mathcal{F}(x))
+    \mathcal{K}(x) = \mathcal{F}^{-1}\left(R_\phi \cdot \mathcal{F}(x)\right)
 \]
-This allows the network to learn global, continuous features of the volatility process, critical for capturing the non-local dependencies of rough volatility.
+where \(\mathcal{F}\) denotes the Fourier transform, and \(R_\phi \in \mathbb{C}^{k \times d_{in} \times d_{out}}\) is a learned filter in frequency space with \(k\) retained modes. This formulation treats the volatility time series as a continuous function rather than discrete samples, enabling resolution-invariant inference. Crucially, spectral convolutions capture \emph{global} dependencies in a single layer---essential for rough volatility, where the Hurst exponent \(H < 0.5\) implies negative autocorrelations at all time scales.
 
 \subsubsection{Differentiable BSM Layer (Physics Decoder)}
 Instead of predicting prices directly (which allows negative prices or arbitrage), our Trunk Net predicts the \emph{Implied Volatility Surface} \(\Sigma(K, T)\). This surface is then passed through a fixed, differentiable Black-Scholes-Merton (BSM) layer to produce prices \(P\):
@@ -82,11 +123,17 @@ This guarantees that price bounds (\(0 \le C \le S\)) and basic boundary conditi
 Real financial data is scarce. To train data-hungry operators, we need synthetic data. However, standard Heston models produce surfaces that are too ``smooth'' compared to the jagged, fractal nature of real markets.
 
 \subsubsection{Rough Heston Simulation}
-We implemented a GPU-accelerated Fourier-based simulator for the Rough Heston model, where the variance process \(v_t\) is driven by a fractional Brownian motion \(W^H_t\) with Hurst parameter \(H \approx 0.1\):
+We implement a GPU-accelerated simulator for the Rough Heston model, where the variance process \(v_t\) is driven by a fractional Brownian motion \(W^H_t\) with Hurst parameter \(H \approx 0.1\) \citep{rosenbaum2018rough}. The key distinction from standard Brownian motion is the long-range dependence captured by the covariance structure:
 \[
-    v_t = v_0 + \frac{1}{\Gamma(H+0.5)} \int_0^t (t-s)^{H-0.5} (\theta - v_s) ds + \dots
+    \mathbb{E}[W^H_t W^H_s] = \frac{1}{2}\left(t^{2H} + s^{2H} - |t-s|^{2H}\right)
 \]
-We approximate this using Cholesky decomposition of the fractional covariance matrix to generate thousands of ``rough'' volatility paths and corresponding surfaces.
+For \(H < 0.5\), this yields \emph{rougher} paths than standard Brownian motion, matching empirical observations of high-frequency volatility dynamics.
+
+We generate correlated fBm paths via Cholesky decomposition of the covariance matrix. Given a discretization \(0 = t_0 < t_1 < \cdots < t_n = T\), we compute:
+\[
+    \Sigma_{ij} = \frac{1}{2}\left(t_i^{2H} + t_j^{2H} - |t_i - t_j|^{2H}\right), \quad W^H = L \cdot Z
+\]
+where \(L = \text{Chol}(\Sigma)\) and \(Z \sim \mathcal{N}(0, I)\). This produces thousands of ``rough'' volatility paths with the correct fractal properties.
 
 \subsubsection{Curriculum Learning}
 We observed that long pre-training on synthetic data leads to \emph{negative transfer} (the model rejects real data). We devised a \textbf{Short Burst} strategy: pre-training for only 100 batches. This serves as a ``physics primer,'' initializing the weights in a valid regime without over-committing to the synthetic distribution.
@@ -123,15 +170,15 @@ The ``Short Burst'' rough pre-training was decisive, reducing MAPE from ~43\% to
 
 \begin{figure}[h]
     \centering
-    \includegraphics[width=1.0\textwidth]{../analysis/plots/full_training_dynamics.png}
+    \includegraphics[width=1.0\textwidth]{figures/training_loss.png}
     \caption{Training Dynamics. (Left) Pre-training phase showing rapid convergence on Rough Heston physics. (Right) Real data fine-tuning phase with regime switch marked by the vertical red line. The model effectively transfers the physical prior to reduce real-world error.}
     \label{fig:pretrain}
 \end{figure}
 
 \begin{figure}[h]
     \centering
-    \includegraphics[width=1.0\textwidth]{../analysis/plots/surface_comparison.png}
-    \caption{Visualizing the Operator: (Left) Ground Truth Volatility Surface from 2022. (Center) Predicted Surface by our Neural Operator. (Right) Absolute Error. The model accurately reconstructs the skew and term structure.}
+    \includegraphics[width=0.7\textwidth]{figures/error_heatmap.png}
+    \caption{Surface reconstruction error across the standard moneyness-maturity grid. The model captures the main skew and term-structure effects while concentrating residual error in the more difficult tail regions.}
     \label{fig:surface}
 \end{figure}
 
@@ -140,22 +187,28 @@ We analyzed the learned latent embeddings using t-SNE. Figure \ref{fig:latent} s
 
 \begin{figure}[h]
     \centering
-    \includegraphics[width=0.6\textwidth]{../analysis/plots/latent_space_tsne.png}
+    \includegraphics[width=0.8\textwidth]{figures/latent_clusters.png}
     \caption{t-SNE visualization of the spectral latent space. The model spontaneously clusters the data into distinct regimes (yellow vs purple), validating the Manifold Hypothesis.}
     \label{fig:latent}
+\end{figure}
+
+To verify that the learned latent space captures continuous geometry rather than merely memorizing discrete training points, we perform a \emph{manifold walk}. We linearly interpolate between the latent vectors of a ``Calm'' regime and a ``Crisis'' regime:
+\[
+    z(\alpha) = (1-\alpha)z_{\text{calm}} + \alpha z_{\text{crisis}}, \quad \alpha \in [0, 1]
+\]
+and decode each intermediate point into a volatility surface. Figure \ref{fig:manifold_walk} shows the resulting sequence of surfaces. The transition is smooth and topologically consistent, with the volatility smile progressively steepening and the overall level rising. This confirms that the Neural Operator has learned a valid chart for the regime manifold, enabling meaningful geodesic interpolation between distinct market states.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=1.0\textwidth]{figures/manifold_walk.png}
+    \caption{Manifold Walk: Linear interpolation in the latent space between a Calm regime (\(\alpha=0\)) and a Crisis regime (\(\alpha=1\)). The decoded surfaces evolve smoothly, demonstrating that the model has learned the continuous geometry of the pricing operator.}
+    \label{fig:manifold_walk}
 \end{figure}
 
 \subsection{Computational Efficiency}
 A critical advantage of the Neural Operator approach is inference speed. Standard stochastic volatility models (Heston, rBergomi) require numerical integration or Monte Carlo simulation for \emph{each contract}, leading to \(O(N)\) complexity. Our Spectral Operator, once trained, infers the entire volatility surface in a single forward pass, benefiting from massive GPU parallelism.
 
-Figure \ref{fig:benchmark} and Table \ref{tab:benchmark} demonstrate that while Heston and Neural rBergomi (Deep Calibration) scale linearly with batch size, our model maintains sub-millisecond per-contract latency even at large batches.
-
-\begin{figure}[h]
-    \centering
-    \includegraphics[width=0.7\textwidth]{../analysis/plots/inference_benchmark.png}
-    \caption{Inference Latency Benchmark. The Neural Operator (Blue) exhibits near-constant time scaling for large batches due to parallelization, whereas traditional Fourier methods (Heston) and serial calibrations scale linearly.}
-    \label{fig:benchmark}
-\end{figure}
+Table \ref{tab:benchmark} demonstrates that while Heston and Neural rBergomi (Deep Calibration) scale linearly with batch size, our model maintains sub-millisecond per-contract latency even at large batches.
 
 \begin{table}[h]
     \centering
